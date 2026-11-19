@@ -214,11 +214,15 @@ def snapshot(st) -> dict:  # noqa: ANN001
                  "effective_for": i.effective_for, "week": i.week}
                 for i in st.assets.indexes
             ],
+            # v1.1.3：生产环境真实索引 = 初始 schema + 玩家新增；分开标注来源，
+            # 初始索引不会伪装成玩家部署的公司资产。
+            "production_indexes": workbench_rules.production_indexes(st),
             "facilities": dict(st.assets.facilities),
             "rewritten_queries": list(st.assets.rewritten_queries),
             # 真实部署的改写 SQL 与「执行计划是否真的用上索引」：前端只展示，不提供参考答案
             "rewrite_sql": dict(getattr(st.assets, "rewrite_sql", {}) or {}),
             "rewrite_verified": dict(getattr(st.assets, "rewrite_verified", {}) or {}),
+            "rewrite_checks": dict(getattr(st.lab, "rewrite_checks", {}) or {}),
             "fixes": list(st.assets.fixes),
             "docs": st.assets.docs,
         },

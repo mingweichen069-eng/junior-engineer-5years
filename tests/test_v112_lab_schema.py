@@ -125,7 +125,7 @@ def test_reset_lab_restores_only_production_indexes():
 def test_rewrite_verification_still_works_after_schema_alignment():
     st = new_game(seed=501)
     st.player.ap, st.player.energy = 999, 999.0
-    workbench.deploy_index(st, "CREATE INDEX ix_created ON orders(created_at)")
+    # v1.1.3：初始 schema 已有 created_at 索引，不需要玩家重复建一份。
     r = workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])
     assert r["ok"] and r["verified"] is True
     assert "q_dashboard" in workbench.mods(st)["per_query"]

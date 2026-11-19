@@ -354,6 +354,54 @@ def is_rewritten(state: GameState, qid: str) -> bool:
     return qid in state.assets.rewritten_queries
 
 
+def initial_indexes() -> list[dict]:
+    """生产环境开局就存在的索引：唯一来源是 content/schema.json。"""
+    return [
+        {"name": name, "table": table, "columns": list(columns), "source": "initial"}
+        for name, table, columns in replica.production_indexes()
+    ]
+
+
+def production_indexes(state: GameState) -> list[dict]:
+    """生产环境当前真实存在的索引 = 初始 schema + 玩家部署的新增索引。
+
+    旧存档里可能残留「重复部署初始索引」的资产记录：这里按名字 / 列组合去重，
+    只让一份索引参与物理判定，避免同一索引被算两次收益。
+    """
+    rows = initial_indexes()
+    names = {r["name"].lower() for r in rows}
+    column_keys = {(r["table"], tuple(c.lower() for c in r["columns"])) for r in rows}
+    for di in state.assets.indexes:
+        name = di.name or ",".join(di.columns)
+        key = (di.table, tuple(c.lower() for c in di.columns))
+        if name.lower() in names or key in column_keys:
+            continue
+        rows.append({
+            "name": name, "table": di.table, "columns": list(di.columns),
+            "source": "player",
+        })
+        names.add(name.lower())
+        column_keys.add(key)
+    return rows
+
+
+def equivalent_index(state: GameState, table: str, columns: list[str],
+                     name: str = "") -> dict | None:
+    """生产里是否已有同表同列（或同名）的索引；返回来源，用于拒绝重复部署。"""
+    column_key = tuple(c.lower() for c in columns)
+    for row in production_indexes(state):
+        if name and row["name"].lower() == name.lower():
+            return row
+        if row["table"] == table and tuple(c.lower() for c in row["columns"]) == column_key:
+            return row
+    return None
+
+
+def index_effective_for(state: GameState, row: dict) -> list[str]:
+    """统一入口：一条生产索引对哪些查询有效，初始索引与玩家索引共用同一套物理判定。"""
+    return effective_for(state, row["table"], row["columns"])
+
+
 def query_columns(q: dict, state: GameState) -> list[str]:
     """这条查询在物理上能被哪些列上的索引帮到。
 
@@ -399,15 +447,16 @@ def effective_for(state: GameState, table: str, columns: list[str]) -> list[str]
 
 def slow_queries(state: GameState) -> list[dict]:
     """监控台：列出活跃查询、它的谓词、以及当前有没有索引真正帮到它。"""
+    production = [(row, index_effective_for(state, row)) for row in production_indexes(state)]
     rows = []
     for q in catalog():
         if not q.get("active") or q.get("kind") in ("write", "other"):
             continue
         needed = query_columns(q, state)
         helping = [
-            i.name or ",".join(i.columns)
-            for i in state.assets.indexes
-            if i.table == q["table"] and q["id"] in i.effective_for
+            row["name"]
+            for row, effective in production
+            if row["table"] == q["table"] and q["id"] in effective
         ]
         preds = ", ".join(
             f"{p['column']}({p.get('op', 'eq')})" for p in q.get("predicates", [])
@@ -420,7 +469,7 @@ def slow_queries(state: GameState) -> list[dict]:
             "order_by": ", ".join(q.get("order_by", [])) or "无",
             "indexable_columns": needed,
             "helping_indexes": helping,
-            "rewritten": q["id"] in state.assets.rewritten_queries,
+            "rewritten": is_rewritten(state, q["id"]),
             "hint": (
                 "谓词列被函数包住了，目前建索引也用不上"
                 if not needed and q.get("predicates")
@@ -451,11 +500,13 @@ def inspect(state: GameState, sql: str) -> dict:
 def rewrite_queries(state: GameState) -> list[dict]:
     """前端「查询改写」区：只给原始 SQL 与已部署资产，绝不给参考答案。"""
     sqls = getattr(state.assets, "rewrite_sql", None) or {}
+    checks = getattr(state.lab, "rewrite_checks", None) or {}
     out = []
     for q in catalog():
         if not q.get("rewriteable"):
             continue
         qid = q["id"]
+        rec = checks.get(qid) or {}
         out.append({
             "id": qid,
             "name": q["name"],
@@ -464,6 +515,9 @@ def rewrite_queries(state: GameState) -> list[dict]:
             "deployed_sql": sqls.get(qid, ""),
             "verified": bool((getattr(state.assets, "rewrite_verified", None) or {}).get(qid)),
             "effective": is_rewritten(state, qid),
+            # 验证结果与 SQL 绑定：前端可据此提示「验证已过期」。
+            "validated_sql": rec.get("sql", ""),
+            "validation_ok": bool(rec.get("ok")),
         })
     return out
 
@@ -566,6 +620,18 @@ def check_rewrite_for_client(state: GameState, query_id: str, sql: str) -> dict:
     key = _signature("rewrite", str(sql or ""))
     record_experiment(state, "rewrite", key, bool(r.get("ok")),
                       note="改写对比：" + (r.get("message") or "")[:120])
+    # 验证结果绑定这份 SQL：之后改成别的 SQL 会自动失效，必须重新验证。
+    if r.get("submitted_sql"):
+        checks = getattr(state.lab, "rewrite_checks", None)
+        if checks is None:
+            state.lab.rewrite_checks = {}
+            checks = state.lab.rewrite_checks
+        checks[query_id] = {
+            "sql": r["submitted_sql"],
+            "ok": bool(r.get("ok")),
+            "verified": bool(r.get("verified")),
+            "week": state.meta.week,
+        }
     state.player.energy = max(0.0, state.player.energy - _survey_energy(state, 3.0))
     if r.get("ok"):
         _gain_experience(state, "rewrite", amount=0.3)
@@ -623,17 +689,20 @@ def deploy_index(state: GameState, sql: str) -> dict:
     风险更高。系统只按列是否命中查询算收益，写放大 / 磁盘上涨永远真实。
     """
     parsed = parse_index(sql)
-    key = _signature("index", sql, parsed)
-    # 同名或同列组合都算重复：不重复扣费、不重复登记、不重复承担风险。
-    already = False
+    # 去重必须覆盖生产初始索引：schema.json 里已经有的索引不需要玩家再建一次，
+    # 重复部署既不该扣费，也不该产生第二份收益。
     if parsed:
-        _, table, columns = parsed
-        already = any(
-            i.name == parsed[0]
-            or (i.table == table and [c.lower() for c in i.columns] == [c.lower() for c in columns])
-            for i in state.assets.indexes
-        )
-    guard = deploy_guard(state, "index", key, already=already)
+        name, table, columns = parsed
+        dup = equivalent_index(state, table, columns, name)
+        if dup:
+            where = "生产初始 schema" if dup["source"] == "initial" else "你已经部署过的资产"
+            return {
+                "ok": False, "allowed": False, "duplicate": True, "charged": False,
+                "message": f"{where}里已有等效索引 {dup['name']}；重复部署不会增加收益，也不会重复扣费。",
+                "existing_index": dup["name"], "source": dup["source"],
+            }
+    key = _signature("index", sql, parsed)
+    guard = deploy_guard(state, "index", key)
     if not guard["allowed"]:
         return guard
     if not parsed:
@@ -668,25 +737,50 @@ def deploy_rewrite(state: GameState, query_id: str, sql: str = "") -> dict:
     """把**玩家自己写的**改写 SQL 部署到生产。
 
     v1.1.2 阶段三：不再只收一个 query_id，也不再有点一下就完事的预设按钮。
+    v1.1.3：验证结果与具体 SQL 绑定。玩家改过 SQL 之后，上一次验证结果不再
+    适用于新 SQL，必须先重新做一次对比验证；部署永远使用当前提交的这份 SQL。
+
     1) 原始查询与玩家 SQL 都在实验库里真跑（check_rewrite）；
     2) 结果不一致 / 跑不起来 = 失败的发布，只收勘察 / 回滚成本；
-    3) 结果一致但没用上索引 = 允许部署，SQL 存进资产，但没有任何性能收益；
-    4) 结果一致且计划里用上目标索引 = 有效资产，索引的物理收益随即重算。
-
-    生产模拟读的是 rewrite_sql / rewrite_verified / rewritten_queries 这套真实
-    资产，而不是一个凭空置位的 rewritten=True 标志。
+    3) 结果一致但没用上索引 = 允许部署，SQL 存进资产，但没有任何性能收益，
+       并清掉这条查询之前可能存在的有效改写状态；
+    4) 结果一致且计划里用上目标索引 = 有效资产，生产索引的物理收益随即重算。
     """
     q = next((x for x in catalog() if x["id"] == query_id), None)
-    key = _signature("rewrite", str(sql or ""))
-    guard = deploy_guard(state, "rewrite", key,
-                         already=query_id in state.assets.rewritten_queries)
+    submitted = str(sql or "").strip()
+
+    checks = getattr(state.lab, "rewrite_checks", None)
+    if checks is None:
+        state.lab.rewrite_checks = {}
+        checks = state.lab.rewrite_checks
+    record = checks.get(query_id) or {}
+    # 验证结果只对当时那份 SQL 有效：改过 SQL 就必须重新验证。
+    if submitted and record.get("sql") and record.get("sql") != submitted:
+        return {
+            "ok": False, "allowed": False, "charged": False,
+            "stale_validation": True, "validated_sql": record.get("sql", ""),
+            "message": "这条查询上一次验证的是另一份 SQL；修改 SQL 后请重新做一次对比验证，再部署。",
+        }
+
+    current_sql = (getattr(state.assets, "rewrite_sql", None) or {}).get(query_id, "")
+    same_as_deployed = bool(current_sql) and current_sql.strip() == submitted
+    key = _signature("rewrite", submitted)
+    guard = deploy_guard(state, "rewrite", key, already=same_as_deployed)
     if not guard["allowed"]:
         return guard
     if not q or not q.get("rewriteable"):
         return deploy_finish(state, guard, success=False,
                              message="没有这条可改写的查询。这次无效上线仍按勘察 / 回滚计入成本。")
 
-    check = check_rewrite(state, query_id, sql)
+    check = check_rewrite(state, query_id, submitted)
+    # 记录本次验证对应的 SQL（失败也记）：之后改 SQL 会被判定为验证过期。
+    if check["submitted_sql"]:
+        checks[query_id] = {
+            "sql": check["submitted_sql"],
+            "ok": bool(check["ok"]),
+            "verified": bool(check.get("verified")),
+            "week": state.meta.week,
+        }
     if not check["ok"]:
         return deploy_finish(
             state, guard, success=False,
@@ -695,26 +789,32 @@ def deploy_rewrite(state: GameState, query_id: str, sql: str = "") -> dict:
         )
 
     # 到这里两份查询真的跑过、结果真的相同：把玩家提交的 SQL 存成公司资产。
-    state.assets.rewrite_sql[query_id] = check["submitted_sql"]
     verified = bool(check["verified"])
+    state.assets.rewrite_sql[query_id] = check["submitted_sql"]
     state.assets.rewrite_verified[query_id] = verified
+    if verified:
+        if query_id not in state.assets.rewritten_queries:
+            state.assets.rewritten_queries.append(query_id)
+        state.flags[f"{query_id}_rewritten"] = True
+    else:
+        # 新 SQL 没有收益：旧的「已改写」状态必须一起失效，不能继续吃老 SQL 的收益。
+        if query_id in state.assets.rewritten_queries:
+            state.assets.rewritten_queries.remove(query_id)
+        state.flags[f"{query_id}_rewritten"] = False
+    # 谓词是否可索引取决于 is_rewritten()：任何改写变更后都要重算一次。
+    for di in state.assets.indexes:
+        di.effective_for = effective_for(state, di.table, di.columns)
     mark(state, ASSET_NODE["rewrite"], "deployed")
     state.career_rec.projects.append(
         f"W{state.meta.week} 改写查询 {q['name']}（提交 {len(check['submitted_sql'])} 字符 SQL）"
     )
 
     if verified:
-        if query_id not in state.assets.rewritten_queries:
-            state.assets.rewritten_queries.append(query_id)
-        state.flags[f"{query_id}_rewritten"] = True
-        # 已经部署的索引要按新谓词重新判定：这一步才让 per_query 收益真的发生
-        for di in state.assets.indexes:
-            di.effective_for = effective_for(state, di.table, di.columns)
         msg = (f"已部署你写的「{q['name']}」改写：实验库里两份结果完全一致，"
-               "执行计划从全表扫描变成走索引，相关查询的生产耗时随之下降。")
+               "执行计划变成走索引，相关查询的生产耗时随之下降。")
     else:
         msg = (f"你写的「{q['name']}」SQL 已部署到生产，但执行计划没用上目标索引："
-               "结果没变，性能也不会变。资产里留着这份 SQL，想改善就回去重写。")
+               "结果没变，性能也不会变；之前的改写收益已撤销。")
     return deploy_finish(state, guard, success=True, message=msg,
                          extra={"rewrite_check": check, "verified": verified})
 
@@ -776,15 +876,21 @@ def cases_for(state: GameState) -> list[dict]:
 
 
 def mods(state: GameState) -> dict[str, float]:
-    """模拟层修正：唯一来源是公司资产，不是「角色掌握了什么」。"""
+    """模拟层修正：唯一来源是生产环境真实存在的索引与设施。
+
+    v1.1.3：生产初始索引（schema.json）与玩家新增索引共用同一套有效性判定。
+    玩家不部署任何索引，也可能因为「改写让初始索引生效」而获得收益——这
+    正是实验库里验证到的真实结论。重复/等价索引不会叠加收益。
+    """
     out: dict[str, float] = {k: 1.0 for k in MOD_KEYS}
     per_query: dict[str, float] = {}
 
-    for di in state.assets.indexes:
-        if di.effective_for:
-            for qid in di.effective_for:
-                per_query[qid] = per_query.get(qid, 1.0) * 0.55
-        # 每个二级索引都真实增加写入成本与磁盘开销（与有没有用无关）
+    for row in production_indexes(state):
+        for qid in index_effective_for(state, row):
+            # 一条查询只按最有效的一份索引折减；重复索引不叠加收益。
+            per_query[qid] = min(per_query.get(qid, 1.0), 0.55)
+    # 只有玩家新增的二级索引才增加写入成本与磁盘开销；初始索引在开局已存在。
+    for _di in state.assets.indexes:
         out["io_wait"] *= 1.05
 
     f = state.assets.facilities

@@ -303,6 +303,8 @@ class LabState:
     """
     experiments: list[dict] = field(default_factory=list)
     deployments: list[dict] = field(default_factory=list)
+    # v1.1.3：查询改写的验证结果与具体 SQL 绑定。玩家改 SQL 后旧结果自动失效。
+    rewrite_checks: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass

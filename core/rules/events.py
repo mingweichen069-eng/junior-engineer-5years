@@ -460,7 +460,12 @@ def _major_resolved(state: GameState, active: dict) -> bool:
     rule = active.get("resolve") or {}
     kind = rule.get("kind")
     if kind == "index_effective":
-        return any(rule.get("query") in i.effective_for for i in state.assets.indexes)
+        # v1.1.3：初始 schema 索引与玩家新增索引都算「生产里真实存在的索引」。
+        from core.rules import workbench as workbench_rules
+        return any(
+            rule.get("query") in workbench_rules.index_effective_for(state, row)
+            for row in workbench_rules.production_indexes(state)
+        )
     if kind == "rewrite":
         return rule.get("query") in state.assets.rewritten_queries
     if kind == "fix":

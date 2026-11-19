@@ -65,10 +65,14 @@ def test_wrong_index_still_costs_write_and_disk():
 
 def test_non_sargable_predicate_needs_rewrite():
     st = new_game(seed=5)
-    r = workbench.deploy_index(st, "CREATE INDEX ix_created ON orders(created_at)")
-    assert "q_dashboard" not in r["effective_for"]      # DATE() 包住列，建了也白建
-    assert workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])["ok"]
-    assert "q_dashboard" in st.assets.indexes[0].effective_for  # 改写后物理生效
+    # v1.1.3：生产初始 schema 里本来就有 created_at 索引，不需要玩家重复部署。
+    # 但 DATE(created_at) 让索引失效；改写之后同一份初始索引才真正生效。
+    assert "q_dashboard" not in workbench.effective_for(st, "orders", ["created_at"])
+    r = workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])
+    assert r["ok"]
+    assert "q_dashboard" in workbench.effective_for(st, "orders", ["created_at"])
+    assert workbench.mods(st)["per_query"]["q_dashboard"] < 1.0
+    assert not st.assets.indexes          # 没有靠重复部署初始索引来「买」收益
 
 
 def test_experiment_uses_real_sqlite(tmp_path, monkeypatch):

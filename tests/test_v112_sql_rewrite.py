@@ -35,7 +35,6 @@ WRONG_RESULT = (
 )
 # 语法就跑不起来
 BROKEN = "SELECT * FROM orders WHERE"
-GOOD_INDEX = "CREATE INDEX ix_created ON orders(created_at)"
 
 
 @pytest.fixture(autouse=True)
@@ -114,8 +113,9 @@ def test_result_mismatch_reports_both_plans():
 
 def test_valid_rewrite_stores_sql_and_changes_production_simulation():
     st = _rich()
-    workbench.deploy_index(st, GOOD_INDEX)
-    assert "q_dashboard" not in st.assets.indexes[0].effective_for   # DATE() 让索引白建
+    # v1.1.3：初始 schema 已有 created_at 索引，不需要玩家重复部署。
+    assert not st.assets.indexes
+    assert "q_dashboard" not in workbench.effective_for(st, "orders", ["created_at"])
 
     r = workbench.deploy_rewrite(st, "q_dashboard", GOOD)
     assert r["ok"] and r["verified"] is True
@@ -123,16 +123,16 @@ def test_valid_rewrite_stores_sql_and_changes_production_simulation():
     assert st.assets.rewrite_verified["q_dashboard"] is True
     assert "q_dashboard" in st.assets.rewritten_queries
     assert st.flags.get("q_dashboard_rewritten") is True
-    # 已经部署的索引按新谓词重算，per_query 收益来自真实资产
-    assert "q_dashboard" in st.assets.indexes[0].effective_for
+    # 生产初始索引在改写后按新谓词生效，per_query 收益来自真实生产索引
+    assert "q_dashboard" in workbench.effective_for(st, "orders", ["created_at"])
     assert workbench.mods(st)["per_query"]["q_dashboard"] < 1.0
+    assert not st.assets.indexes          # 没有重复部署，也没有伪造资产
     assert workbench.is_rewritten(st, "q_dashboard") is True
 
 
 def test_rewrite_without_index_gain_has_no_production_benefit():
     """结果一致但没用上目标索引：允许部署（不设门槛），但资产标记为无效。"""
     st = _rich()
-    workbench.deploy_index(st, GOOD_INDEX)
     r = workbench.deploy_rewrite(st, "q_dashboard", ORIGINAL)
     assert r["ok"] is True                 # 不是「错误」，只是一次没有收益的发布
     assert r["verified"] is False
@@ -140,7 +140,7 @@ def test_rewrite_without_index_gain_has_no_production_benefit():
     assert st.assets.rewrite_verified["q_dashboard"] is False
     assert "q_dashboard" not in st.assets.rewritten_queries   # 不能靠标志骗过事件判定
     assert not st.flags.get("q_dashboard_rewritten")
-    assert "q_dashboard" not in st.assets.indexes[0].effective_for
+    assert "q_dashboard" not in workbench.effective_for(st, "orders", ["created_at"])
     assert "q_dashboard" not in workbench.mods(st)["per_query"]
 
 
