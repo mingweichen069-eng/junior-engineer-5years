@@ -1,0 +1,6 @@
+"""Flask 启动入口：py -3 app.py"""
+
+from web.app import app
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=True)

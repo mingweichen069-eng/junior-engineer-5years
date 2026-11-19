@@ -1,0 +1,8 @@
+{
+  "q_my_orders": 1.0,
+  "q_dashboard": 1.0,
+  "q_pending": 0.15,
+  "q_detail": 0.17,
+  "q_create": 1.0,
+  "q_pay": 1.0
+}

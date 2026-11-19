@@ -1,0 +1,57 @@
+{
+  "tables": {
+    "orders": {
+      "rows": 1200000,
+      "row_bytes": 320,
+      "fill_factor": 0.72,
+      "columns": {
+        "id": {"type": "bigint", "cardinality": 1200000},
+        "user_id": {"type": "bigint", "cardinality": 200000},
+        "status": {"type": "tinyint", "cardinality": 5},
+        "created_at": {"type": "datetime", "cardinality": 1200000},
+        "amount": {"type": "decimal", "cardinality": 900000}
+      },
+      "indexes": {
+        "idx_orders_created": {"columns": ["created_at"], "entry_bytes": 26}
+      }
+    },
+    "order_items": {
+      "rows": 3600000,
+      "row_bytes": 120,
+      "fill_factor": 0.72,
+      "columns": {
+        "id": {"type": "bigint", "cardinality": 3600000},
+        "order_id": {"type": "bigint", "cardinality": 1200000},
+        "product_id": {"type": "bigint", "cardinality": 50000},
+        "qty": {"type": "int", "cardinality": 20},
+        "price": {"type": "decimal", "cardinality": 100000}
+      },
+      "indexes": {
+        "idx_items_order": {"columns": ["order_id"], "entry_bytes": 22}
+      }
+    },
+    "users": {
+      "rows": 200000,
+      "row_bytes": 480,
+      "fill_factor": 0.72,
+      "columns": {
+        "id": {"type": "bigint", "cardinality": 200000},
+        "phone": {"type": "varchar", "cardinality": 200000},
+        "created_at": {"type": "datetime", "cardinality": 200000}
+      },
+      "indexes": {}
+    },
+    "payments": {
+      "rows": 1500000,
+      "row_bytes": 160,
+      "fill_factor": 0.72,
+      "columns": {
+        "id": {"type": "bigint", "cardinality": 1500000},
+        "order_id": {"type": "bigint", "cardinality": 1200000},
+        "status": {"type": "tinyint", "cardinality": 4},
+        "created_at": {"type": "datetime", "cardinality": 1500000}
+      },
+      "indexes": {}
+    }
+  }
+}

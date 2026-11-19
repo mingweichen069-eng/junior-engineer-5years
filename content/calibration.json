@@ -1,0 +1,9 @@
+{
+  "write": {
+    "insert_ms_noidx": 0.001,
+    "insert_ms_idx": 0.002,
+    "index_overhead_ms": 0.001
+  },
+  "source": "lab/replica.db",
+  "date": "2026-11-18"
+}

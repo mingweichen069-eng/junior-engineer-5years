@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拾味科技 · 初级工程师：五年</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body data-lens="latency">
+<div id="progress"><i></i></div>
+
+<!-- v0.9 启动主界面：新的游戏 / 加载游戏 / 设置 / 沙盒模式 / 已解锁知识 -->
+<div id="splash-root"></div>
+
+<div class="app">
+  <!-- 顶部资源条 -->
+  <header class="hud">
+    <div class="hud-brand">
+      <span class="crest">拾</span>
+      <div class="crest-text"><b>拾味科技</b><small>SERVE OR PERISH</small></div>
+    </div>
+    <div class="resbar" id="resbar"></div>
+    <div class="hud-tail">
+      <div class="alerts" id="alerts"></div>
+      <button class="hud-btn ghost" id="menu" title="返回主界面">主菜单</button>
+      <button class="hud-btn" id="newgame" title="开始新档案">新档案</button>
+      <button class="hud-btn ghost" id="sandbox" title="沙盘模式：不结算结局">沙盘</button>
+    </div>
+  </header>
+
+  <div class="body">
+    <!-- 左侧透镜栏 -->
+    <nav class="rail" id="nav">
+      <button data-panel="overview" class="active" title="全局视图（快捷键 1）"><i>局</i><span>全局</span></button>
+      <button data-panel="monitor" title="监控（快捷键 2）"><i>监</i><span>监控</span></button>
+      <button data-panel="actions" title="行动（快捷键 3）"><i>行</i><span>行动</span></button>
+      <button data-panel="tech" title="科技与考核（快捷键 4）"><i>技</i><span>科技</span></button>
+      <button data-panel="knowledge" title="知识库（快捷键 5）"><i>识</i><span>知识</span></button>
+      <button data-panel="docs" title="手册（快捷键 6）"><i>册</i><span>手册</span></button>
+      <button data-panel="career" title="档案（快捷键 7）"><i>档</i><span>档案</span></button>
+    </nav>
+
+    <main class="stage" id="center"><div class="loading">载入中…</div></main>
+
+    <aside class="inspector">
+      <div id="inspect"></div>
+      <div id="eventfeed"></div>
+    </aside>
+  </div>
+
+  <!-- 底部时间轴 -->
+  <footer class="chrono">
+    <div class="chrono-l" id="chrono-status"></div>
+    <div class="chrono-c">
+      <div class="dateplate">
+        <span class="y" id="clock-y">--</span>
+        <span class="m" id="clock-m">--</span>
+      </div>
+      <div class="speed" id="speed">
+        <button data-speed="pause" class="active" title="暂停">❙❙</button>
+        <button data-speed="1" title="推进一周（空格）">▶</button>
+        <button data-speed="4" title="推进四周">▶▶</button>
+        <button data-speed="auto" title="自动推进（每 1.6 秒一周）">⟳</button>
+      </div>
+    </div>
+    <div class="chrono-r"><span id="clock-meta">--</span></div>
+  </footer>
+</div>
+
+<div id="tooltip" class="tip"></div>
+<div id="modal-root"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

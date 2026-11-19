@@ -1,0 +1,2213 @@
+{
+  "version": 2,
+  "intro": "考核以真实动手为主：编码题会真的执行你写的函数并跑用例，SQL 会在 20 万订单副本上跑 EXPLAIN；配置题与计算题只作补充。简单/普通共用基础题库，困难/老手各有加严变体，任何难度都不会只剩填空。",
+  "tasks": {
+    "ex_orders_index": {
+      "kind": "sql",
+      "title": "「我的订单」列表",
+      "role": "客服转来投诉",
+      "brief": "用户点「我的订单」要转 4 秒。接口现在是这样写的：按 user_id 过滤，却用 id 倒序分页；取的还是 SELECT *。",
+      "goal": "写出「我的订单」查询：user_id = 12345，按时间倒序取 20 条。要求执行计划用上索引、不出现额外排序（TEMP B-TREE），并且只取需要的列。",
+      "starter": "SELECT *\nFROM orders\nWHERE user_id = 12345\nORDER BY id DESC\nLIMIT 20",
+      "checks": {
+        "must": [
+          "where\\s+user_id\\s*=",
+          "order\\s+by\\s+created_at\\s+desc",
+          "limit\\s+20"
+        ],
+        "forbid": [
+          "select\\s+\\*"
+        ],
+        "require_plan": [
+          "USING\\s+INDEX|COVERING\\s+INDEX"
+        ],
+        "forbid_plan": [
+          "TEMP B-TREE"
+        ],
+        "max_rows": 20
+      },
+      "hint": "复合索引 (user_id, created_at) 的顺序就是数据顺序：先等值定位 user_id，再顺着第二列倒序读。ORDER BY 只有跟着索引顺序才不用额外排序。",
+      "solution": "SELECT id, status, amount, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20",
+      "minutes": 8
+    },
+    "ex_range_rewrite": {
+      "kind": "sql",
+      "title": "大屏按天统计",
+      "role": "老板的墙",
+      "brief": "大屏每天要出「昨天新增订单」，SQL 写成 WHERE DATE(created_at) = '…'。函数包住了索引列，只能全表扫描。",
+      "goal": "把这条查询改成能走索引的范围条件，只取一天的数据，最多 500 行。",
+      "starter": "SELECT id, amount, created_at\nFROM orders\nWHERE DATE(created_at) = '2023-12-01'\nLIMIT 500",
+      "checks": {
+        "must": [
+          "created_at\\s*>=\\s*'",
+          "created_at\\s*<\\s*'"
+        ],
+        "forbid": [
+          "date\\s*\\("
+        ],
+        "require_plan": [
+          "USING\\s+INDEX|COVERING\\s+INDEX"
+        ],
+        "max_rows": 500
+      },
+      "hint": "索引里存的是 created_at 的原值，不是 DATE(created_at)。改成 created_at >= 当天 00:00 AND created_at < 次日 00:00，范围才能下推到索引。",
+      "solution": "SELECT id, amount, created_at\nFROM orders\nWHERE created_at >= '2023-12-01'\n  AND created_at < '2023-12-02'\nLIMIT 500",
+      "minutes": 7
+    },
+    "ex_covering": {
+      "kind": "sql",
+      "title": "只从索引里拿数据",
+      "role": "性能评审",
+      "brief": "这条查询已经用上索引，但仍然要回表取 status、amount：每行一次随机 IO。评审要求把它压成覆盖索引。",
+      "goal": "让执行计划出现 COVERING INDEX：查询的列必须全部落在 (user_id, created_at) 里，并且仍然按时间倒序取 20 条。",
+      "starter": "SELECT id, status, amount, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20",
+      "checks": {
+        "must": [
+          "where\\s+user_id\\s*=",
+          "order\\s+by\\s+created_at\\s+desc"
+        ],
+        "forbid": [
+          "select\\s+\\*"
+        ],
+        "require_plan": [
+          "COVERING\\s+INDEX"
+        ],
+        "max_rows": 20
+      },
+      "hint": "覆盖索引 = 查询要的列都在索引里，不需要回表。索引是 (user_id, created_at)，那你就只能取这两列（外加索引隐含的主键）。",
+      "solution": "SELECT user_id, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20",
+      "minutes": 8
+    },
+    "ex_pay_sli": {
+      "kind": "sql",
+      "title": "支付成功率 SLI",
+      "role": "周会要一张图",
+      "brief": "周明远要「昨天支付成功率」这一个数。payments.status：1 处理中，2 成功，3 失败。",
+      "goal": "统计某一天的支付成功率（成功笔数 / 总笔数），只扫这一天的数据，结果只要一行。",
+      "starter": "SELECT SUM(status = 2) / COUNT(*) AS rate\nFROM payments",
+      "checks": {
+        "must": [
+          "count\\s*\\(",
+          "created_at\\s*>=\\s*'",
+          "created_at\\s*<\\s*'"
+        ],
+        "forbid": [
+          "date\\s*\\("
+        ],
+        "require_plan": [
+          "USING\\s+INDEX|COVERING\\s+INDEX"
+        ],
+        "max_rows": 5
+      },
+      "hint": "别用整数除法：SUM(...)/COUNT(*) 在 SQLite 里会直接截成 0。要么 *1.0，要么 ROUND(...,4)。日期条件仍然要写成区间。",
+      "solution": "SELECT ROUND(SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 4) AS success_rate\nFROM payments\nWHERE created_at >= '2023-12-01'\n  AND created_at < '2023-12-02'",
+      "minutes": 8
+    },
+    "ex_consistency_audit": {
+      "kind": "sql",
+      "title": "对账：订单与支付不一致",
+      "role": "财务对账",
+      "brief": "财务说有些订单状态是「已完成」，但支付流水不是成功。以前靠人工翻，现在要一条 SQL 查出来。",
+      "goal": "查出 orders.status = 3 但对应 payments.status 不为 2 的订单，最多返回 200 行。",
+      "starter": "SELECT *\nFROM orders\nWHERE status = 3",
+      "checks": {
+        "must": [
+          "join\\s+payments",
+          "payments",
+          "status"
+        ],
+        "forbid": [
+          "select\\s+\\*"
+        ],
+        "max_rows": 200
+      },
+      "hint": "两表用 order_id 关联：JOIN payments p ON p.order_id = o.id，然后同时约束 o.status 与 p.status。别忘 LIMIT。",
+      "solution": "SELECT o.id, o.status, p.status AS pay_status\nFROM orders o\nJOIN payments p ON p.order_id = o.id\nWHERE o.status = 3 AND p.status <> 2\nLIMIT 100",
+      "minutes": 9
+    },
+    "ex_keyset": {
+      "kind": "sql",
+      "title": "深分页：别再用 OFFSET",
+      "role": "列表页第 200 页",
+      "brief": "翻到第 200 页时 OFFSET 4000 会先扫掉 4000 行再丢掉。列表页越翻越慢。",
+      "goal": "改成游标分页：已知上一页最后一条的 created_at，用它作为下一页的起点，仍然按时间倒序取 20 条，并且不出现 OFFSET。",
+      "starter": "SELECT id, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20 OFFSET 4000",
+      "checks": {
+        "must": [
+          "created_at\\s*<\\s*'",
+          "limit\\s+20",
+          "where\\s+user_id"
+        ],
+        "forbid": [
+          "offset"
+        ],
+        "require_plan": [
+          "USING\\s+INDEX|COVERING\\s+INDEX"
+        ],
+        "forbid_plan": [
+          "TEMP B-TREE"
+        ],
+        "max_rows": 20
+      },
+      "hint": "keyset 分页：WHERE user_id = ? AND created_at < 上一页最后一条的时间 ORDER BY created_at DESC LIMIT 20。索引 (user_id, created_at) 正好能同时满足过滤与排序。",
+      "solution": "SELECT id, created_at\nFROM orders\nWHERE user_id = 12345\n  AND created_at < '2023-12-15 12:00:00'\nORDER BY created_at DESC\nLIMIT 20",
+      "minutes": 9
+    },
+    "ex_dup_find": {
+      "kind": "sql",
+      "title": "找出重复支付",
+      "role": "事故复盘",
+      "brief": "有用户投诉「扣了两次钱」。支付回调重试时写重了流水。",
+      "goal": "找出 payments 里同一 order_id 出现多条流水的订单，最多返回 100 行。",
+      "starter": "SELECT order_id\nFROM payments\nWHERE status = 2",
+      "checks": {
+        "must": [
+          "group\\s+by\\s+order_id",
+          "having\\s+count\\s*\\(\\s*\\*\\s*\\)\\s*>\\s*1"
+        ],
+        "forbid": [],
+        "max_rows": 100,
+        "min_rows": 1
+      },
+      "hint": "按 order_id 分组，用 HAVING COUNT(*) > 1 只留下大于一条的组。GROUP BY 之后 HAVING 才过滤聚合结果，WHERE 不行。",
+      "solution": "SELECT order_id, COUNT(*) AS n\nFROM payments\nGROUP BY order_id\nHAVING COUNT(*) > 1\nLIMIT 50",
+      "minutes": 7
+    },
+    "ex_latest_per_user": {
+      "kind": "sql",
+      "title": "每个用户的最近一单",
+      "role": "运营要名单",
+      "brief": "运营要「最近下过单的用户 + 最后一单时间」，用来做召回。",
+      "goal": "按 user_id 分组，取每个用户最近一次下单时间，最多 100 行。",
+      "starter": "SELECT *\nFROM orders\nORDER BY created_at DESC\nLIMIT 100",
+      "checks": {
+        "must": [
+          "group\\s+by\\s+user_id",
+          "max\\s*\\(\\s*created_at\\s*\\)"
+        ],
+        "forbid": [
+          "select\\s+\\*"
+        ],
+        "max_rows": 100
+      },
+      "hint": "「每个……的最近一次」= GROUP BY 维度 + MAX(时间)。先分组再取最大值，别用 ORDER BY + LIMIT 糊过去。",
+      "solution": "SELECT user_id, MAX(created_at) AS last_order_at\nFROM orders\nGROUP BY user_id\nLIMIT 100",
+      "minutes": 6
+    },
+    "ex_online_ddl": {
+      "kind": "text",
+      "title": "在线 DDL 变更单",
+      "role": "变更评审",
+      "brief": "orders 表 2000 万行，白天不能停写。你要给 (user_id, created_at) 加索引。",
+      "goal": "写出这条 MySQL 变更语句：加复合索引，并明确要求 in-place、不锁表。（写在变更单里，会议纪要会存档）",
+      "starter": "ALTER TABLE orders ADD INDEX idx_orders_user_created (user_id, created_at);",
+      "checks": {
+        "must": [
+          "alter\\s+table\\s+orders",
+          "add\\s+(index|key)",
+          "user_id",
+          "created_at",
+          "algorithm\\s*=\\s*inplace",
+          "lock\\s*=\\s*none"
+        ],
+        "forbid": [
+          "algorithm\\s*=\\s*copy"
+        ]
+      },
+      "min_length": 30,
+      "hint": "只写 ADD INDEX 是不够的：没有 ALGORITHM=INPLACE, LOCK=NONE，MySQL 5.7 之前的默认行为会锁写。变更单必须把这两项写死。",
+      "solution": "ALTER TABLE orders\n  ADD INDEX idx_orders_user_created (user_id, created_at),\n  ALGORITHM=INPLACE, LOCK=NONE;",
+      "minutes": 8
+    },
+    "ex_atomic_update": {
+      "kind": "text",
+      "title": "库存扣减：别先读再写",
+      "role": "代码评审",
+      "brief": "现在的做法是先 SELECT stock，应用里判断够不够，再 UPDATE 成新值。两个人同时下单就会超卖。",
+      "goal": "写成一条原子 UPDATE：库存自减 1，并且库存不足时不允许减成负数。",
+      "starter": "SELECT stock FROM products WHERE id = 42;\nUPDATE products SET stock = 38 WHERE id = 42;",
+      "checks": {
+        "must": [
+          "update\\s+products",
+          "set\\s+stock\\s*=\\s*stock\\s*-",
+          "where[^;]*stock\\s*>=\\s*1"
+        ],
+        "forbid": [
+          "stock\\s*=\\s*\\d+\\s*where"
+        ]
+      },
+      "min_length": 24,
+      "hint": "把判断塞进 WHERE：UPDATE products SET stock = stock - 1 WHERE id = 42 AND stock >= 1。影响行数 0 就代表库存不足，不用先读。",
+      "solution": "UPDATE products\nSET stock = stock - 1\nWHERE id = 42 AND stock >= 1;",
+      "minutes": 7
+    },
+    "ex_cache_lock": {
+      "kind": "text",
+      "title": "缓存击穿：只放一个请求回源",
+      "role": "大促前夜",
+      "brief": "热点 key 过期的一瞬间，几千个请求同时回源，数据库直接被打穿。",
+      "goal": "写出一条 Redis 互斥锁命令：只有拿到锁的请求去重建缓存，锁必须自带过期时间，避免死锁。",
+      "starter": "SET lock:hot_orders 1",
+      "checks": {
+        "must": [
+          "set\\s+\\S+\\s+\\S+",
+          "\\bnx\\b",
+          "\\bex\\b|\\bpx\\b"
+        ],
+        "forbid": []
+      },
+      "min_length": 16,
+      "hint": "NX 保证只有一个人能设成功（抢到锁），EX 或 PX 给锁加过期时间。两条缺一不可：没有 NX 会重复重建，没有 EX 会死锁。",
+      "solution": "SET lock:hot_orders 1 NX EX 5",
+      "minutes": 6
+    },
+    "ex_rate_limit": {
+      "kind": "text",
+      "title": "入口限流配置",
+      "role": "大促容量评审",
+      "brief": "下游只能扛 20 r/s。超出部分要有损拒绝，不能排队把连接池占满。",
+      "goal": "写出 Nginx 的限流配置：按客户端 IP 限速 20 r/s，允许 40 的突发，并且超出的请求立刻拒绝（不排队）。",
+      "starter": "# 在这里写两行：limit_req_zone 与 limit_req",
+      "checks": {
+        "must": [
+          "limit_req_zone",
+          "limit_req\\s+zone",
+          "burst\\s*=\\s*\\d+",
+          "nodelay"
+        ],
+        "forbid": []
+      },
+      "min_length": 30,
+      "hint": "zone 定义速率（rate=20r/s），limit_req 引用 zone，burst=40 允许突发，nodelay 让突发之外立刻 503 而不是排队。",
+      "solution": "limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;\nlimit_req zone=api burst=40 nodelay;",
+      "minutes": 8
+    },
+    "ex_pool_math": {
+      "kind": "number",
+      "title": "连接池要多大",
+      "role": "容量评审",
+      "brief": "接口 400 QPS，单次查询平均 12ms。目标是把连接池饱和度 ρ 控制在 0.7 以内（再高等待时间就开始非线性上涨）。",
+      "goal": "算一下连接池至少需要多少个连接？（按 并发 = QPS × 单次耗时 估算，向上取整）",
+      "starter": "",
+      "checks": {},
+      "answer": 7,
+      "tolerance": 1,
+      "unit": "个连接",
+      "hint": "先算并发：400 × 0.012 = 4.8。池子大小 = 并发 / 目标 ρ = 4.8 / 0.7 ≈ 6.9，向上取整是 7。",
+      "solution": "并发 4.8 / ρ 0.7 ≈ 6.9 → 至少 7 个连接",
+      "minutes": 5
+    },
+    "ex_replica_math": {
+      "kind": "number",
+      "title": "副本能分走多少 IO",
+      "role": "扩容汇报",
+      "brief": "主库 3000 IOPS，其中读占 80%。每台只读副本能分走 35% 的读流量，最多分走 75%。",
+      "goal": "加 2 台副本之后，主库还剩多少 IOPS？（取整到 10）",
+      "starter": "",
+      "checks": {},
+      "answer": 1320,
+      "tolerance": 40,
+      "unit": "IOPS",
+      "hint": "读 2400、写 600。两台副本分走 70%（没超过 75% 上限），主库读剩 2400×0.3=720，加写 600 得 1320。",
+      "solution": "读 2400 × 0.3 = 720；写 600；合计 1320 IOPS",
+      "minutes": 6
+    },
+    "ex_capacity_math": {
+      "kind": "number",
+      "title": "两个月后的峰值",
+      "role": "容量规划",
+      "brief": "本周峰值 850 QPS，业务月增长 6%。扩容要提前一个季度下单，你得先算清楚两个月后是多少。",
+      "goal": "两个月后的峰值 QPS 大约是多少？（复利，取整）",
+      "starter": "",
+      "checks": {},
+      "answer": 955,
+      "tolerance": 20,
+      "unit": "QPS",
+      "hint": "850 × 1.06 × 1.06 ≈ 955。容量规划不能按「加 6%」算，要按月复利。",
+      "solution": "850 × 1.06² ≈ 955 QPS",
+      "minutes": 5
+    },
+    "ex_write_amp": {
+      "kind": "number",
+      "title": "多一个索引，多多少写 IO",
+      "role": "索引评审",
+      "brief": "订单表每秒写入 90 行。每多一个二级索引，每行写入就要多一次随机 IO。现在有 3 个二级索引。",
+      "goal": "再加 1 个索引之后，这张表的写入 IOPS 是多少？",
+      "starter": "",
+      "checks": {},
+      "answer": 360,
+      "tolerance": 10,
+      "unit": "IOPS",
+      "hint": "4 个二级索引 × 90 行/秒 = 360 次随机 IO/秒。索引不是免费的：每加一个都在给写路径加税。",
+      "solution": "90 × 4 = 360 IOPS",
+      "minutes": 5
+    },
+    "ex_fn_paginate": {
+      "kind": "code",
+      "title": "「我的订单」下一页参数",
+      "role": "后端 · 列表接口",
+      "brief": "列表页改成游标分页了。前端传 user_id 和上一页最后一条的 created_at，你要生成给 DAO 的查询参数。",
+      "goal": "实现 next_page_args(user_id, last_created_at, limit=20)：返回 dict，含 user_id 与 limit；只有传了 cursor（非 None）才额外带 cursor 键。首页不要出现 cursor。",
+      "starter": "def next_page_args(user_id, last_created_at, limit=20):\n    # TODO\n    pass",
+      "entry": "next_page_args",
+      "cases": [
+        {
+          "args": [
+            12345,
+            null,
+            20
+          ],
+          "expect": {
+            "user_id": 12345,
+            "limit": 20
+          }
+        },
+        {
+          "args": [
+            12345,
+            "2023-12-15 12:00:00",
+            20
+          ],
+          "expect": {
+            "user_id": 12345,
+            "cursor": "2023-12-15 12:00:00",
+            "limit": 20
+          }
+        },
+        {
+          "args": [
+            7,
+            "x",
+            5
+          ],
+          "expect": {
+            "user_id": 7,
+            "cursor": "x",
+            "limit": 5
+          }
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+next_page_args"
+        ],
+        "forbid": []
+      },
+      "hint": "首页没有游标，就不要把 cursor: null 塞进查询里：DAO 会把它当成一个真的条件。",
+      "solution": "def next_page_args(user_id, last_created_at, limit=20):\n    out = {\"user_id\": user_id, \"limit\": limit}\n    if last_created_at is not None:\n        out[\"cursor\"] = last_created_at\n    return out",
+      "minutes": 10
+    },
+    "ex_fn_idempo": {
+      "kind": "code",
+      "title": "支付回调幂等去重",
+      "role": "后端 · 交易链路",
+      "brief": "支付回调会重试，同一个幂等键可能连着来好几次。先到的那条才算数。",
+      "goal": "实现 dedup_keys(events)：events 是 [[key, value], ...]，按 key 保留第一次出现的记录，保持原顺序，返回 [[key, value], ...]。",
+      "starter": "def dedup_keys(events):\n    # TODO\n    pass",
+      "entry": "dedup_keys",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ]
+            ]
+          ],
+          "expect": [
+            [
+              "a",
+              1
+            ],
+            [
+              "b",
+              2
+            ]
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                "x",
+                1
+              ],
+              [
+                "x",
+                2
+              ],
+              [
+                "y",
+                3
+              ]
+            ]
+          ],
+          "expect": [
+            [
+              "x",
+              1
+            ],
+            [
+              "y",
+              3
+            ]
+          ]
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": []
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+dedup_keys"
+        ],
+        "forbid": []
+      },
+      "hint": "一个 set 记下见过的 key 就够了；注意保留第一次的顺序，不要用 dict 覆盖成最后一次。",
+      "solution": "def dedup_keys(events):\n    seen = set()\n    out = []\n    for key, value in events:\n        if key in seen:\n            continue\n        seen.add(key)\n        out.append([key, value])\n    return out",
+      "minutes": 10
+    },
+    "ex_fn_order_state": {
+      "kind": "code",
+      "title": "订单状态机的流转判定",
+      "role": "后端 · 业务函数开发",
+      "brief": "订单状态：0 新建 / 1 已支付 / 2 已发货 / 3 已完成 / 4 已取消。状态不能乱跳，客服改单前必须过这一层。",
+      "goal": "实现 can_transition(current, target)：只允许 0→1→2→3 顺序流转；4（取消）只允许从 0 或 1 过去；原地不动一律拒绝。返回 bool。",
+      "starter": "def can_transition(current, target):\n    # TODO\n    pass",
+      "entry": "can_transition",
+      "cases": [
+        {
+          "args": [
+            0,
+            1
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            1,
+            2
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            2,
+            3
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            3,
+            1
+          ],
+          "expect": false
+        },
+        {
+          "args": [
+            0,
+            4
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            2,
+            4
+          ],
+          "expect": false
+        },
+        {
+          "args": [
+            1,
+            1
+          ],
+          "expect": false
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+can_transition"
+        ],
+        "forbid": []
+      },
+      "hint": "先把「正常下一步」写成一张映射表，取消作为一条单独规则；别用一堆 if 漏掉 3→4。",
+      "solution": "def can_transition(current, target):\n    nxt = {0: 1, 1: 2, 2: 3}\n    if target == 4:\n        return current in (0, 1)\n    return nxt.get(current) == target",
+      "minutes": 12
+    },
+    "ex_fn_retry": {
+      "kind": "code",
+      "title": "退避重试间隔",
+      "role": "后端 · 下游调用",
+      "brief": "下游偶尔超时。立刻重试会把人家打得更死，要按尝试次数指数退避，并且封顶。",
+      "goal": "实现 backoff_ms(attempt, base=100, cap=2000)：返回 base × 2^attempt，但不超过 cap。attempt 从 0 开始。",
+      "starter": "def backoff_ms(attempt, base=100, cap=2000):\n    # TODO\n    pass",
+      "entry": "backoff_ms",
+      "cases": [
+        {
+          "args": [
+            0
+          ],
+          "expect": 100
+        },
+        {
+          "args": [
+            3
+          ],
+          "expect": 800
+        },
+        {
+          "args": [
+            10
+          ],
+          "expect": 2000
+        },
+        {
+          "args": [
+            2,
+            50,
+            300
+          ],
+          "expect": 200
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+backoff_ms"
+        ],
+        "forbid": []
+      },
+      "hint": "先算指数再取 min，不要先截断再乘；cap 是绝对上限。",
+      "solution": "def backoff_ms(attempt, base=100, cap=2000):\n    return min(cap, base * (2 ** attempt))",
+      "minutes": 8
+    },
+    "ex_fn_circuit": {
+      "kind": "code",
+      "title": "熔断器状态判定",
+      "role": "SRE · 治理",
+      "brief": "熔断器的状态不该靠一堆散落的 if。把判定收成一个纯函数，测试才好写。",
+      "goal": "实现 breaker_state(failures, threshold=5, recovering=False)：failures >= threshold 返回 'open'；recovering 为真且未熔断返回 'half_open'；failures > 0 返回 'watch'；否则 'closed'。",
+      "starter": "def breaker_state(failures, threshold=5, recovering=False):\n    # TODO\n    pass",
+      "entry": "breaker_state",
+      "cases": [
+        {
+          "args": [
+            0
+          ],
+          "expect": "closed"
+        },
+        {
+          "args": [
+            2
+          ],
+          "expect": "watch"
+        },
+        {
+          "args": [
+            5
+          ],
+          "expect": "open"
+        },
+        {
+          "args": [
+            9
+          ],
+          "expect": "open"
+        },
+        {
+          "args": [
+            3,
+            5,
+            true
+          ],
+          "expect": "half_open"
+        },
+        {
+          "args": [
+            0,
+            5,
+            true
+          ],
+          "expect": "half_open"
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+breaker_state"
+        ],
+        "forbid": []
+      },
+      "hint": "判断顺序很重要：熔断（open）优先于半开（half_open），否则阈值到了还会放流量进去。",
+      "solution": "def breaker_state(failures, threshold=5, recovering=False):\n    if failures >= threshold:\n        return \"open\"\n    if recovering:\n        return \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
+      "minutes": 10
+    },
+    "ex_fn_sli": {
+      "kind": "code",
+      "title": "剩余错误预算",
+      "role": "SRE · SLO",
+      "brief": "本月 SLO 是 99.9%。老板问「还能再出几次事」，得给一个数。",
+      "goal": "实现 error_budget_left(total, bad, slo=0.999)：允许的错误数 = total × (1-slo)，返回 (允许 - bad) / 允许，保留 4 位小数，最低 0；允许数为 0 时返回 1.0。",
+      "starter": "def error_budget_left(total, bad, slo=0.999):\n    # TODO\n    pass",
+      "entry": "error_budget_left",
+      "cases": [
+        {
+          "args": [
+            100000,
+            30
+          ],
+          "expect": 0.7
+        },
+        {
+          "args": [
+            100000,
+            100
+          ],
+          "expect": 0.0
+        },
+        {
+          "args": [
+            100000,
+            0
+          ],
+          "expect": 1.0
+        },
+        {
+          "args": [
+            1000,
+            0,
+            0.99
+          ],
+          "expect": 1.0
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+error_budget_left"
+        ],
+        "forbid": []
+      },
+      "hint": "预算是「允许的错误数」而不是「请求数」；用完就是 0，不要给负数。",
+      "solution": "def error_budget_left(total, bad, slo=0.999):\n    allowed = total * (1 - slo)\n    if allowed <= 0:\n        return 1.0\n    return round(max(0.0, allowed - bad) / allowed, 4)",
+      "minutes": 10
+    },
+    "ex_fn_cost": {
+      "kind": "code",
+      "title": "要加几台机器",
+      "role": "性能 · 容量",
+      "brief": "峰值 850 QPS，单机按 120 QPS 算，还要留 30% 安全余量。采购要整数台。",
+      "goal": "实现 required_servers(peak_qps, per_server=120, safety=1.3)：返回 ceil(peak_qps × safety / per_server)，peak_qps 为 0 时返回 0。不能用 import。",
+      "starter": "def required_servers(peak_qps, per_server=120, safety=1.3):\n    # TODO\n    pass",
+      "entry": "required_servers",
+      "cases": [
+        {
+          "args": [
+            850,
+            120,
+            1.3
+          ],
+          "expect": 10
+        },
+        {
+          "args": [
+            240,
+            120,
+            1.0
+          ],
+          "expect": 2
+        },
+        {
+          "args": [
+            0,
+            120,
+            1.0
+          ],
+          "expect": 0
+        },
+        {
+          "args": [
+            100,
+            100,
+            1.0
+          ],
+          "expect": 1
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+required_servers"
+        ],
+        "forbid": []
+      },
+      "hint": "不能用 math.ceil：先整除，再看余数是不是还要补一台。",
+      "solution": "def required_servers(peak_qps, per_server=120, safety=1.3):\n    target = peak_qps * safety\n    if target <= 0:\n        return 0\n    n = int(target // per_server)\n    if n * per_server < target:\n        n += 1\n    return n",
+      "minutes": 10
+    },
+    "ex_fn_lru": {
+      "kind": "code",
+      "title": "LRU 缓存命中次数",
+      "role": "算法 · 缓存",
+      "brief": "热点 key 的缓存容量有限。先按 LRU 模拟一遍，看看这套容量值不值。",
+      "goal": "实现 lru_hits(keys, capacity)：按 LRU（最久未用的先淘汰）模拟访问，返回命中次数。capacity 至少为 1。",
+      "starter": "def lru_hits(keys, capacity):\n    # TODO\n    pass",
+      "entry": "lru_hits",
+      "cases": [
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            2
+          ],
+          "expect": 1
+        },
+        {
+          "args": [
+            [
+              1,
+              1,
+              1
+            ],
+            1
+          ],
+          "expect": 2
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              3
+            ],
+            3
+          ],
+          "expect": 0
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              3,
+              1,
+              4
+            ],
+            2
+          ],
+          "expect": 0
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+lru_hits"
+        ],
+        "forbid": []
+      },
+      "hint": "命中之后要把它挪到队尾（最近使用）；淘汰永远从队头拿最久没用的那个。",
+      "solution": "def lru_hits(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return hits",
+      "minutes": 12
+    },
+    "ex_fn_topk": {
+      "kind": "code",
+      "title": "最大的 K 个数",
+      "role": "算法 · 排行榜",
+      "brief": "运营要「金额最高的前 K 单」。别把 20 万行全拉到应用里排。",
+      "goal": "实现 top_k(nums, k)：返回最大的 k 个数，按降序；k 超过长度就返回全部降序；空列表返回空列表。",
+      "starter": "def top_k(nums, k):\n    # TODO\n    pass",
+      "entry": "top_k",
+      "cases": [
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2
+            ],
+            3
+          ],
+          "expect": [
+            9,
+            5,
+            4
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              2
+            ],
+            5
+          ],
+          "expect": [
+            2,
+            1
+          ]
+        },
+        {
+          "args": [
+            [],
+            3
+          ],
+          "expect": []
+        },
+        {
+          "args": [
+            [
+              5,
+              5,
+              3
+            ],
+            2
+          ],
+          "expect": [
+            5,
+            5
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+top_k"
+        ],
+        "forbid": []
+      },
+      "hint": "重复值要保留（不是去重后的 TopK）；切片超过长度会自动截断。",
+      "solution": "def top_k(nums, k):\n    return sorted(nums, reverse=True)[:k]",
+      "minutes": 8
+    },
+    "ex_fn_merge": {
+      "kind": "code",
+      "title": "合并重叠区间",
+      "role": "算法 · 告警收敛",
+      "brief": "同一时刻涌进来一堆重叠的告警时间窗，值班同学只想看几段真正的故障区间。",
+      "goal": "实现 merge_intervals(intervals)：输入 [[start,end], ...]，合并所有重叠/相接（s <= 上一段 end）的区间，返回合并后的 [[start,end], ...]，按 start 升序。空输入返回空列表。",
+      "starter": "def merge_intervals(intervals):\n    # TODO\n    pass",
+      "entry": "merge_intervals",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ]
+            ]
+          ],
+          "expect": [
+            [
+              1,
+              6
+            ],
+            [
+              8,
+              10
+            ],
+            [
+              15,
+              18
+            ]
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                4
+              ],
+              [
+                4,
+                5
+              ]
+            ]
+          ],
+          "expect": [
+            [
+              1,
+              5
+            ]
+          ]
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": []
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                2
+              ]
+            ]
+          ],
+          "expect": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+merge_intervals"
+        ],
+        "forbid": []
+      },
+      "hint": "先按 start 排序，再线性扫一遍；相接（s == 上一段 end）也算重叠。",
+      "solution": "def merge_intervals(intervals):\n    if not intervals:\n        return []\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    return out",
+      "minutes": 12
+    },
+    "ex_fn_hotkey": {
+      "kind": "code",
+      "title": "找出热点 key",
+      "role": "算法 · 流量治理",
+      "brief": "大促时少数几个 key 被打爆了。先把出现次数达到阈值的 key 找出来，才好做本地缓存。",
+      "goal": "实现 hot_keys(keys, threshold=3)：返回出现次数 >= threshold 的 key 列表，按 key 升序；没有就返回空列表。",
+      "starter": "def hot_keys(keys, threshold=3):\n    # TODO\n    pass",
+      "entry": "hot_keys",
+      "cases": [
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "a",
+              "c",
+              "a"
+            ]
+          ],
+          "expect": [
+            "a"
+          ]
+        },
+        {
+          "args": [
+            [
+              "x",
+              "y",
+              "x",
+              "y"
+            ]
+          ],
+          "expect": []
+        },
+        {
+          "args": [
+            [
+              "a",
+              "a",
+              "b",
+              "b",
+              "a",
+              "b"
+            ],
+            3
+          ],
+          "expect": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": []
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+hot_keys"
+        ],
+        "forbid": []
+      },
+      "hint": "一次遍历计数，再筛 + 排序；别用嵌套循环数重复。",
+      "solution": "def hot_keys(keys, threshold=3):\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    return sorted([k for k, n in counts.items() if n >= threshold])",
+      "minutes": 9
+    },
+    "ex_fn_interval_cover": {
+      "kind": "code",
+      "title": "故障总覆盖时长",
+      "role": "算法 · 复盘",
+      "brief": "合并完告警窗口，还要回答老板「到底一共断了多久」。",
+      "goal": "实现 covered_length(intervals)：先按 merge_intervals 的规则合并重叠区间，再返回所有合并后区间长度之和（end - start，不是闭区间 +1）。",
+      "starter": "def covered_length(intervals):\n    # TODO\n    pass",
+      "entry": "covered_length",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ]
+          ],
+          "expect": 7
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                4
+              ],
+              [
+                4,
+                5
+              ]
+            ]
+          ],
+          "expect": 4
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": 0
+        },
+        {
+          "args": [
+            [
+              [
+                0,
+                10
+              ],
+              [
+                3,
+                5
+              ]
+            ]
+          ],
+          "expect": 10
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+covered_length"
+        ],
+        "forbid": []
+      },
+      "hint": "先合并再求和，直接把原区间长度相加会重复计算重叠部分。",
+      "solution": "def covered_length(intervals):\n    if not intervals:\n        return 0\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    total = 0\n    for s, e in out:\n        total += e - s\n    return total",
+      "minutes": 12
+    },
+    "ex_fn_paginate_h": {
+      "kind": "code",
+      "title": "双向游标 + has_more",
+      "role": "后端 · 困难",
+      "brief": "困难难度：列表要支持往前翻，还要告诉前端还有没有下一页。",
+      "goal": "实现 page_args(user_id, cursor, direction='next', limit=20, has_more=False)：返回 dict 恒含 user_id/limit/direction/has_more；cursor 非空才带 cursor；direction 只能是 'next' 或 'prev'，其他值一律按 'next'。",
+      "starter": "def page_args(user_id, cursor, direction='next', limit=20, has_more=False):\n    # TODO\n    pass",
+      "entry": "page_args",
+      "cases": [
+        {
+          "args": [
+            1,
+            null
+          ],
+          "expect": {
+            "user_id": 1,
+            "limit": 20,
+            "direction": "next",
+            "has_more": false
+          }
+        },
+        {
+          "args": [
+            1,
+            "c",
+            "prev",
+            10,
+            true
+          ],
+          "expect": {
+            "user_id": 1,
+            "cursor": "c",
+            "limit": 10,
+            "direction": "prev",
+            "has_more": true
+          }
+        },
+        {
+          "args": [
+            2,
+            "x",
+            "bad",
+            5,
+            false
+          ],
+          "expect": {
+            "user_id": 2,
+            "cursor": "x",
+            "limit": 5,
+            "direction": "next",
+            "has_more": false
+          }
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+page_args"
+        ],
+        "forbid": []
+      },
+      "hint": "非法 direction 要兜底成 next，别把脏参数透传给 DAO。",
+      "solution": "def page_args(user_id, cursor, direction='next', limit=20, has_more=False):\n    out = {\"user_id\": user_id, \"limit\": limit,\n           \"direction\": direction if direction in (\"next\", \"prev\") else \"next\",\n           \"has_more\": bool(has_more)}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n    return out",
+      "minutes": 12
+    },
+    "ex_fn_order_state_h": {
+      "kind": "code",
+      "title": "状态机 + 退款分支",
+      "role": "后端 · 困难",
+      "brief": "困难难度：已支付但未发货可以退款（状态 5），已完成也能申请售后（状态 6）。",
+      "goal": "实现 next_states(current)：返回该状态允许跳转到的状态列表（升序）。规则：0→[1,4]，1→[2,4,5]，2→[3,5]，3→[6]，4/5/6 是终态→[]。",
+      "starter": "def next_states(current):\n    # TODO\n    pass",
+      "entry": "next_states",
+      "cases": [
+        {
+          "args": [
+            0
+          ],
+          "expect": [
+            1,
+            4
+          ]
+        },
+        {
+          "args": [
+            1
+          ],
+          "expect": [
+            2,
+            4,
+            5
+          ]
+        },
+        {
+          "args": [
+            2
+          ],
+          "expect": [
+            3,
+            5
+          ]
+        },
+        {
+          "args": [
+            3
+          ],
+          "expect": [
+            6
+          ]
+        },
+        {
+          "args": [
+            4
+          ],
+          "expect": []
+        },
+        {
+          "args": [
+            5
+          ],
+          "expect": []
+        },
+        {
+          "args": [
+            9
+          ],
+          "expect": []
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+next_states"
+        ],
+        "forbid": []
+      },
+      "hint": "终态和未知状态都返回空列表，别让状态机自己造出一个不存在的状态。",
+      "solution": "def next_states(current):\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    return sorted(table.get(current, []))",
+      "minutes": 12
+    },
+    "ex_fn_circuit_h": {
+      "kind": "code",
+      "title": "带冷却计数的熔断",
+      "role": "SRE · 困难",
+      "brief": "困难难度：熔断后要等 cooldown 个时间片才允许半开。",
+      "goal": "实现 breaker_state(failures, open_ticks, threshold=5, cooldown=3)：failures>=threshold 且 open_ticks < cooldown → 'open'；failures>=threshold 且 open_ticks >= cooldown → 'half_open'；failures>0 → 'watch'；否则 'closed'。",
+      "starter": "def breaker_state(failures, open_ticks, threshold=5, cooldown=3):\n    # TODO\n    pass",
+      "entry": "breaker_state",
+      "cases": [
+        {
+          "args": [
+            0,
+            0
+          ],
+          "expect": "closed"
+        },
+        {
+          "args": [
+            2,
+            0
+          ],
+          "expect": "watch"
+        },
+        {
+          "args": [
+            5,
+            0
+          ],
+          "expect": "open"
+        },
+        {
+          "args": [
+            5,
+            2
+          ],
+          "expect": "open"
+        },
+        {
+          "args": [
+            5,
+            3
+          ],
+          "expect": "half_open"
+        },
+        {
+          "args": [
+            7,
+            9,
+            5,
+            1
+          ],
+          "expect": "half_open"
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+breaker_state"
+        ],
+        "forbid": []
+      },
+      "hint": "冷却时间是「已经开了多久」，不是「还要等多久」。",
+      "solution": "def breaker_state(failures, open_ticks, threshold=5, cooldown=3):\n    if failures >= threshold:\n        return \"open\" if open_ticks < cooldown else \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
+      "minutes": 12
+    },
+    "ex_fn_lru_h": {
+      "kind": "code",
+      "title": "LRU 最终状态",
+      "role": "算法 · 困难",
+      "brief": "困难难度：不只要命中次数，还要给出缓存里最后剩下什么。",
+      "goal": "实现 lru_state(keys, capacity)：返回 [hits, cache]，cache 按「最久未用 → 最近使用」排列，元素是 key。capacity 至少 1。",
+      "starter": "def lru_state(keys, capacity):\n    # TODO\n    pass",
+      "entry": "lru_state",
+      "cases": [
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            2
+          ],
+          "expect": [
+            1,
+            [
+              3,
+              2
+            ]
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              1,
+              1
+            ],
+            1
+          ],
+          "expect": [
+            2,
+            [
+              1
+            ]
+          ]
+        },
+        {
+          "args": [
+            [],
+            2
+          ],
+          "expect": [
+            0,
+            []
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              3,
+              1
+            ],
+            3
+          ],
+          "expect": [
+            1,
+            [
+              2,
+              3,
+              1
+            ]
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+lru_state"
+        ],
+        "forbid": []
+      },
+      "hint": "返回的是两个值组成的列表；命中后记得把 key 挪到队尾。",
+      "solution": "def lru_state(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [hits, cache]",
+      "minutes": 12
+    },
+    "ex_fn_topk_h": {
+      "kind": "code",
+      "title": "去重后的 TopK",
+      "role": "算法 · 困难",
+      "brief": "困难难度：同一个商品的重复曝光只算一次。",
+      "goal": "实现 top_k_unique(nums, k)：先去重，再返回最大的 k 个数（降序）；k 超过去重后数量就返回全部。",
+      "starter": "def top_k_unique(nums, k):\n    # TODO\n    pass",
+      "entry": "top_k_unique",
+      "cases": [
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2
+            ],
+            3
+          ],
+          "expect": [
+            9,
+            5,
+            4
+          ]
+        },
+        {
+          "args": [
+            [
+              5,
+              5,
+              3
+            ],
+            2
+          ],
+          "expect": [
+            5,
+            3
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              2
+            ],
+            5
+          ],
+          "expect": [
+            2,
+            1
+          ]
+        },
+        {
+          "args": [
+            [],
+            3
+          ],
+          "expect": []
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+top_k_unique"
+        ],
+        "forbid": []
+      },
+      "hint": "set 去重会丢顺序，但后面反正要降序排，没问题。",
+      "solution": "def top_k_unique(nums, k):\n    return sorted(set(nums), reverse=True)[:k]",
+      "minutes": 9
+    },
+    "ex_fn_sli_h": {
+      "kind": "code",
+      "title": "滚动窗口错误率",
+      "role": "SRE · 困难",
+      "brief": "困难难度：按最近 N 个时间片算错误率，超预算就报警。",
+      "goal": "实现 window_error_rate(samples, window=3, budget=0.01)：samples 是 [[total, bad], ...]，只取最后 window 片，返回 [rate, over]；rate = 总 bad / 总 total 保留 4 位小数，总 total 为 0 时 rate=0.0；over 为 rate 是否严格大于 budget 的 bool。",
+      "starter": "def window_error_rate(samples, window=3, budget=0.01):\n    # TODO\n    pass",
+      "entry": "window_error_rate",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ]
+            ]
+          ],
+          "expect": [
+            0.0033,
+            false
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                1000,
+                20
+              ],
+              [
+                1000,
+                20
+              ]
+            ]
+          ],
+          "expect": [
+            0.02,
+            true
+          ]
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": [
+            0.0,
+            false
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                100,
+                1
+              ],
+              [
+                100,
+                1
+              ],
+              [
+                100,
+                1
+              ],
+              [
+                100,
+                1
+              ]
+            ],
+            2
+          ],
+          "expect": [
+            0.01,
+            false
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+window_error_rate"
+        ],
+        "forbid": []
+      },
+      "hint": "取最后 window 片再求和；rate 严格大于 budget 才算超（等于不算）。",
+      "solution": "def window_error_rate(samples, window=3, budget=0.01):\n    recent = samples[-window:]\n    total = sum(s[0] for s in recent)\n    bad = sum(s[1] for s in recent)\n    if total == 0:\n        return [0.0, False]\n    rate = round(bad / total, 4)\n    return [rate, rate > budget]",
+      "minutes": 12
+    },
+    "ex_fn_paginate_v": {
+      "kind": "code",
+      "title": "游标签名与越界保护",
+      "role": "后端 · 老手",
+      "brief": "老手难度：cursor 要带签名，limit 要夹在 1~50，脏参数一律打回。",
+      "goal": "实现 build_query(user_id, cursor=None, limit=20, sign='s')：limit 夹到 [1,50]；返回 dict 含 user_id/limit；cursor 非空时带 cursor 与 sign，否则都不带。",
+      "starter": "def build_query(user_id, cursor=None, limit=20, sign='s'):\n    # TODO\n    pass",
+      "entry": "build_query",
+      "cases": [
+        {
+          "args": [
+            1
+          ],
+          "expect": {
+            "user_id": 1,
+            "limit": 20
+          }
+        },
+        {
+          "args": [
+            1,
+            "c",
+            999,
+            "k"
+          ],
+          "expect": {
+            "user_id": 1,
+            "limit": 50,
+            "cursor": "c",
+            "sign": "k"
+          }
+        },
+        {
+          "args": [
+            2,
+            "x",
+            0
+          ],
+          "expect": {
+            "user_id": 2,
+            "limit": 1,
+            "cursor": "x",
+            "sign": "s"
+          }
+        },
+        {
+          "args": [
+            3,
+            null,
+            -5
+          ],
+          "expect": {
+            "user_id": 3,
+            "limit": 1
+          }
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+build_query"
+        ],
+        "forbid": []
+      },
+      "hint": "先夹 limit，再决定带不带 cursor/sign；两个字段要同进同出。",
+      "solution": "def build_query(user_id, cursor=None, limit=20, sign='s'):\n    lim = max(1, min(50, limit))\n    out = {\"user_id\": user_id, \"limit\": lim}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n        out[\"sign\"] = sign\n    return out",
+      "minutes": 13
+    },
+    "ex_fn_order_state_v": {
+      "kind": "code",
+      "title": "状态机 + 合法路径校验",
+      "role": "后端 · 老手",
+      "brief": "老手难度：给一条状态变更历史，判断整条路径是否合法（含取消/退款/售后分支）。",
+      "goal": "实现 valid_path(states)：states 是状态列表。合法转移：0→1/4，1→2/4/5，2→3/5，3→6，4/5/6 终态；第一个状态必须是 0；单元素 [0] 合法。返回 bool。",
+      "starter": "def valid_path(states):\n    # TODO\n    pass",
+      "entry": "valid_path",
+      "cases": [
+        {
+          "args": [
+            [
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            [
+              0
+            ]
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            [
+              0,
+              4
+            ]
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            [
+              0,
+              2
+            ]
+          ],
+          "expect": false
+        },
+        {
+          "args": [
+            [
+              0,
+              1,
+              5
+            ]
+          ],
+          "expect": true
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              3
+            ]
+          ],
+          "expect": false
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": false
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+valid_path"
+        ],
+        "forbid": []
+      },
+      "hint": "空路径不合法；用 zip 逐对检查，别只看首尾。",
+      "solution": "def valid_path(states):\n    if not states or states[0] != 0:\n        return False\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    for a, b in zip(states, states[1:]):\n        if b not in table.get(a, []):\n            return False\n    return True",
+      "minutes": 14
+    },
+    "ex_fn_lru_v": {
+      "kind": "code",
+      "title": "LRU 命中明细",
+      "role": "算法 · 老手",
+      "brief": "老手难度：给出每一次访问是命中还是未命中，以及最终缓存。",
+      "goal": "实现 lru_trace(keys, capacity)：返回 [flags, cache]，flags 是与 keys 等长的 0/1 列表（1=命中），cache 按最久未用→最近使用排列。",
+      "starter": "def lru_trace(keys, capacity):\n    # TODO\n    pass",
+      "entry": "lru_trace",
+      "cases": [
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3
+            ],
+            2
+          ],
+          "expect": [
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              1,
+              1
+            ],
+            1
+          ],
+          "expect": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1
+            ]
+          ]
+        },
+        {
+          "args": [
+            [],
+            2
+          ],
+          "expect": [
+            [],
+            []
+          ]
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              3
+            ],
+            2
+          ],
+          "expect": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              2,
+              3
+            ]
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+lru_trace"
+        ],
+        "forbid": []
+      },
+      "hint": "flags 与输入等长；淘汰后新 key 放队尾。",
+      "solution": "def lru_trace(keys, capacity):\n    cache = []\n    flags = []\n    for k in keys:\n        if k in cache:\n            flags.append(1)\n            cache.remove(k)\n            cache.append(k)\n        else:\n            flags.append(0)\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [flags, cache]",
+      "minutes": 13
+    },
+    "ex_fn_topk_v": {
+      "kind": "code",
+      "title": "稳定 TopK（同值保序）",
+      "role": "算法 · 老手",
+      "brief": "老手难度：金额相同时，先出现的订单排在前面。",
+      "goal": "实现 stable_top_k(pairs, k)：pairs 是 [[id, amount], ...]，按 amount 降序、amount 相同按 id 升序，取前 k 个，返回 id 列表。",
+      "starter": "def stable_top_k(pairs, k):\n    # TODO\n    pass",
+      "entry": "stable_top_k",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                3,
+                50
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                2,
+                90
+              ]
+            ],
+            2
+          ],
+          "expect": [
+            2,
+            1
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                5,
+                10
+              ],
+              [
+                4,
+                10
+              ],
+              [
+                1,
+                10
+              ]
+            ],
+            3
+          ],
+          "expect": [
+            1,
+            4,
+            5
+          ]
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                1
+              ]
+            ],
+            5
+          ],
+          "expect": [
+            1
+          ]
+        },
+        {
+          "args": [
+            [],
+            2
+          ],
+          "expect": []
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+stable_top_k"
+        ],
+        "forbid": []
+      },
+      "hint": "排序键写成 (-amount, id)，一个 sorted 就够。",
+      "solution": "def stable_top_k(pairs, k):\n    xs = sorted(pairs, key=lambda p: (-p[1], p[0]))\n    return [p[0] for p in xs[:k]]",
+      "minutes": 11
+    },
+    "ex_fn_merge_v": {
+      "kind": "code",
+      "title": "合并后最大空闲间隙",
+      "role": "算法 · 老手",
+      "brief": "老手难度：合并完故障窗口，还要找出最长的一段「没出事」的时间。",
+      "goal": "实现 largest_gap(intervals, horizon)：先合并重叠区间（同 merge_intervals），再计算 [0, horizon] 内未被覆盖的最长连续长度。输入区间都落在 [0, horizon] 内。",
+      "starter": "def largest_gap(intervals, horizon):\n    # TODO\n    pass",
+      "entry": "largest_gap",
+      "cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ],
+            12
+          ],
+          "expect": 2
+        },
+        {
+          "args": [
+            [
+              [
+                0,
+                12
+              ]
+            ],
+            12
+          ],
+          "expect": 0
+        },
+        {
+          "args": [
+            [],
+            12
+          ],
+          "expect": 12
+        },
+        {
+          "args": [
+            [
+              [
+                2,
+                4
+              ],
+              [
+                9,
+                10
+              ]
+            ],
+            12
+          ],
+          "expect": 5
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+largest_gap"
+        ],
+        "forbid": []
+      },
+      "hint": "别忘了最后一段（末尾区间到 horizon），也别忘了开头那一段。",
+      "solution": "def largest_gap(intervals, horizon):\n    xs = sorted([list(i) for i in intervals])\n    out = []\n    for s, e in xs:\n        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    best, cur = 0, 0\n    for s, e in out:\n        if s > cur:\n            best = max(best, s - cur)\n        cur = max(cur, e)\n    return max(best, horizon - cur)",
+      "minutes": 14
+    },
+    "ex_fn_hotkey_v": {
+      "kind": "code",
+      "title": "TopN 热点及占比",
+      "role": "算法 · 老手",
+      "brief": "老手难度：给出访问次数最多的 N 个 key，以及它们合起来占总请求的比例。",
+      "goal": "实现 hot_report(keys, n=2)：返回 [top, share]。top 是出现次数最多的 n 个 key（次数降序，次数相同按 key 升序）组成的列表；share 是这些 key 的总次数 / 总请求数，保留 4 位小数。空输入返回 [[], 0.0]。",
+      "starter": "def hot_report(keys, n=2):\n    # TODO\n    pass",
+      "entry": "hot_report",
+      "cases": [
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "c",
+              "a"
+            ]
+          ],
+          "expect": [
+            [
+              "a",
+              "b"
+            ],
+            0.8
+          ]
+        },
+        {
+          "args": [
+            [
+              "x",
+              "x",
+              "y",
+              "y"
+            ],
+            1
+          ],
+          "expect": [
+            [
+              "x"
+            ],
+            0.5
+          ]
+        },
+        {
+          "args": [
+            []
+          ],
+          "expect": [
+            [],
+            0.0
+          ]
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "c"
+            ],
+            5
+          ],
+          "expect": [
+            [
+              "a",
+              "b",
+              "c"
+            ],
+            1.0
+          ]
+        }
+      ],
+      "checks": {
+        "must": [
+          "def\\s+hot_report"
+        ],
+        "forbid": []
+      },
+      "hint": "次数相同按 key 升序；share 的分母是总请求数，不是去重后的 key 数。",
+      "solution": "def hot_report(keys, n=2):\n    if not keys:\n        return [[], 0.0]\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    order = sorted(counts, key=lambda k: (-counts[k], k))\n    top = order[:n]\n    share = round(sum(counts[k] for k in top) / len(keys), 4)\n    return [top, share]",
+      "minutes": 13
+    },
+    "ex_fn_sql_h": {
+      "kind": "sql",
+      "title": "覆盖索引（困难加严）",
+      "role": "数据库 · 困难",
+      "brief": "困难难度：不仅要走索引，还要零回表，且不允许任何额外排序。",
+      "goal": "查询 user_id = 12345 的订单，按时间倒序取 20 条；执行计划必须出现 COVERING INDEX，且不能出现 TEMP B-TREE。",
+      "starter": "SELECT id, status, amount, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20",
+      "checks": {
+        "must": [
+          "where\\s+user_id\\s*=",
+          "order\\s+by\\s+created_at\\s+desc",
+          "limit\\s+20"
+        ],
+        "forbid": [
+          "select\\s+\\*"
+        ],
+        "require_plan": [
+          "COVERING\\s+INDEX"
+        ],
+        "forbid_plan": [
+          "TEMP B-TREE"
+        ],
+        "max_rows": 20
+      },
+      "hint": "只取索引里已有的列：user_id 与 created_at。多取一列就要回表。",
+      "solution": "SELECT user_id, created_at\nFROM orders\nWHERE user_id = 12345\nORDER BY created_at DESC\nLIMIT 20",
+      "minutes": 10
+    },
+    "ex_fn_sql_v": {
+      "kind": "sql",
+      "title": "范围查询（老手加严）",
+      "role": "数据库 · 老手",
+      "brief": "老手难度：区间条件 + 索引下推 + 禁止额外排序，一条都不能少。",
+      "goal": "取 2023-12-01 一天的订单，执行计划必须用上索引且不出现 TEMP B-TREE。",
+      "starter": "SELECT id, amount, created_at\nFROM orders\nWHERE DATE(created_at) = '2023-12-01'\nLIMIT 500",
+      "checks": {
+        "must": [
+          "created_at\\s*>=\\s*'",
+          "created_at\\s*<\\s*'",
+          "limit\\s+500"
+        ],
+        "forbid": [
+          "date\\s*\\("
+        ],
+        "require_plan": [
+          "USING\\s+INDEX|COVERING\\s+INDEX"
+        ],
+        "forbid_plan": [
+          "TEMP B-TREE"
+        ],
+        "max_rows": 500
+      },
+      "hint": "函数包住索引列就走不了索引；写成半开区间 [当天, 次日)。",
+      "solution": "SELECT id, amount, created_at\nFROM orders\nWHERE created_at >= '2023-12-01'\n  AND created_at < '2023-12-02'\nLIMIT 500",
+      "minutes": 10
+    },
+    "ex_number_h": {
+      "kind": "number",
+      "title": "写入放大（困难加严）",
+      "role": "容量 · 困难",
+      "brief": "订单表每秒写 90 行，现有 3 个二级索引，再加 1 个；另外心跳每秒还有 60 次元数据写。",
+      "goal": "这张表每秒总共多少次随机写 IO？（取整）",
+      "starter": "",
+      "checks": {},
+      "answer": 420,
+      "tolerance": 10,
+      "unit": "IOPS",
+      "hint": "4 个二级索引 × 90 = 360，再加 60 次元数据写 = 420。",
+      "solution": "4 × 90 + 60 = 420 IOPS",
+      "minutes": 6
+    },
+    "ex_number_v": {
+      "kind": "number",
+      "title": "峰值容量（老手加严）",
+      "role": "容量 · 老手",
+      "brief": "本周峰值 850 QPS，月增长 6%，按复利算两个月后；安全余量 1.3，单机 120 QPS。",
+      "goal": "两个月后需要多少台机器？（向上取整）",
+      "starter": "",
+      "checks": {},
+      "answer": 11,
+      "tolerance": 1,
+      "unit": "台",
+      "hint": "850 × 1.06² ≈ 955；× 1.3 ≈ 1241；/ 120 ≈ 10.3，向上取整 11。",
+      "solution": "850 × 1.06² × 1.3 / 120 ≈ 10.3 → 11 台",
+      "minutes": 7
+    }
+  },
+  "difficulty_variants": {
+    "hard": {
+      "ex_fn_paginate": "ex_fn_paginate_h",
+      "ex_fn_order_state": "ex_fn_order_state_h",
+      "ex_fn_circuit": "ex_fn_circuit_h",
+      "ex_fn_lru": "ex_fn_lru_h",
+      "ex_fn_topk": "ex_fn_topk_h",
+      "ex_fn_sli": "ex_fn_sli_h",
+      "ex_covering": "ex_fn_sql_h",
+      "ex_pool_math": "ex_number_h"
+    },
+    "veteran": {
+      "ex_fn_paginate": "ex_fn_paginate_v",
+      "ex_fn_order_state": "ex_fn_order_state_v",
+      "ex_fn_lru": "ex_fn_lru_v",
+      "ex_fn_topk": "ex_fn_topk_v",
+      "ex_fn_merge": "ex_fn_merge_v",
+      "ex_fn_hotkey": "ex_fn_hotkey_v",
+      "ex_range_rewrite": "ex_fn_sql_v",
+      "ex_capacity_math": "ex_number_v",
+      "ex_fn_circuit": "ex_fn_circuit_h"
+    }
+  },
+  "difficulty_sets": {
+    "easy": {
+      "label": "基础题库",
+      "note": "与普通难度同题：以真库 SQL 与业务函数为主，配置 / 计算题只作补充。"
+    },
+    "normal": {
+      "label": "基础题库",
+      "note": "与简单难度同题，但必须交卷才能掌握（简单模式读满即得）。"
+    },
+    "hard": {
+      "label": "加严题库 B",
+      "note": "新增 6 道加严编码题 + 加严覆盖索引题 + 加严容量题；每个专精仍是编码考核。"
+    },
+    "veteran": {
+      "label": "加严题库 C",
+      "note": "新增 7 道老手编码题 + 加严范围查询题 + 加严峰值容量题，题目与困难不同。"
+    }
+  }
+}

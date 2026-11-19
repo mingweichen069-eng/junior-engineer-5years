@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>初级工程师：五年</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<div id="progress"><i></i></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">拾</span>
+    <div class="brand-text"><b>拾味科技</b><small>初级工程师：五年</small></div>
+  </div>
+  <nav class="mainnav" id="nav">
+    <button data-panel="overview" class="active">主页</button>
+    <button data-panel="monitor">监控</button>
+    <button data-panel="actions">行动</button>
+    <button data-panel="lab">实验台</button>
+    <button data-panel="tech">科技树</button>
+    <button data-panel="docs">文档</button>
+    <button data-panel="career">存档</button>
+  </nav>
+  <div class="topstats">
+    <span class="ts"><label>现金</label><b id="cash">--</b></span>
+    <span class="ts"><label>注册</label><b id="users">--</b></span>
+    <span class="ts"><label>行动力</label><b id="ap">--</b></span>
+    <span class="ts"><label>可用性</label><b id="avail">--</b></span>
+  </div>
+  <div class="clock" id="clock">--</div>
+</header>
+
+<main class="shell">
+  <aside class="sidebar">
+    <section class="card side" id="side-metrics"></section>
+    <section class="card side" id="sysstatus"></section>
+    <section class="card side grow" id="eventfeed"></section>
+  </aside>
+  <section class="center" id="center"><div class="loading">载入中…</div></section>
+</main>
+
+<footer class="timebar">
+  <div class="advance">
+    <button id="adv1" class="primary">推进 1 周</button>
+    <button id="adv4">推进 4 周</button>
+    <span class="sep"></span>
+    <button id="newgame">新游戏</button>
+    <button id="sandbox">沙盘</button>
+  </div>
+  <div class="hint">每回合 5 行动力 · 每 4 周月结 · 世界不会等你</div>
+  <div class="toast" id="toast"></div>
+</footer>
+
+<div id="modal-root"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

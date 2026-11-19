@@ -1,0 +1,1114 @@
+{
+ "version": "0.9.0",
+ "branches": {
+  "cs": {
+   "name": "计算机基础",
+   "short": "基础",
+   "row": 0,
+   "color": "#8ea6c4",
+   "desc": "组成原理、操作系统、网络、算法、并发、分布式。所有路线的公共地基：它不直接给你绝招，但让每条路都走得更便宜。"
+  },
+  "db": {
+   "name": "数据库",
+   "short": "数据库",
+   "row": 1,
+   "color": "#c9a961",
+   "desc": "索引、执行计划、事务、复制、分片。把数据库当成主场，用最少的机器换最大的延迟下降。"
+  },
+  "backend": {
+   "name": "后端",
+   "short": "后端",
+   "row": 2,
+   "color": "#b06a5a",
+   "desc": "缓存、异步、治理、连接池。让应用层在流量面前有结构，而不是靠加机器硬扛。"
+  },
+  "sre": {
+   "name": "SRE",
+   "short": "SRE",
+   "row": 3,
+   "color": "#6f9a86",
+   "desc": "监控、容量、混沌、复盘。让系统在没人盯着的时候也不出事，出事时能快速收敛。"
+  },
+  "perf": {
+   "name": "性能工程",
+   "short": "性能",
+   "row": 4,
+   "color": "#8d7fb5",
+   "desc": "IO 路径、火焰图、压测、成本。跨在三条路线之上的横切能力：同样的机器，压出更多吞吐。"
+  },
+  "algo": {
+   "name": "算法工程",
+   "short": "算法",
+   "row": 5,
+   "color": "#7f9ec9",
+   "desc": "复杂度、缓存淘汰、TopK、频次统计、近似算法。把「能跑」变成「跑得省」：同样的机器，用对数据结构多吃一倍流量。"
+  }
+ },
+ "layout": {
+  "min_col": 1,
+  "max_col": 6
+ },
+ "switch_cost_multiplier": 2,
+ "nodes": [
+  {
+   "id": "cs_arch",
+   "branch": "cs",
+   "col": 1,
+   "tier": 1,
+   "name": "组成原理与存储层次",
+   "desc": "寄存器到磁盘差六个数量级。优化的第一原则是「少下去一层」，不是「算得更快」。",
+   "ap": 3,
+   "effects": {
+    "traits": {
+     "arch": 6
+    },
+    "mods": {
+     "io_wait": 0.97
+    }
+   },
+   "knowledge": [
+    "k_arch_hierarchy",
+    "k_arch_cpu"
+   ],
+   "unlocks_note": "磁盘等待 -3%：你知道该先看命中率，而不是先换 CPU。",
+   "sub": 0,
+   "exam": ""
+  },
+  {
+   "id": "cs_os",
+   "branch": "cs",
+   "col": 1,
+   "tier": 1,
+   "name": "操作系统：进程与内存",
+   "desc": "进程隔离、线程共享、协程调度；缺页一旦发生，延迟就是断崖。",
+   "ap": 3,
+   "effects": {
+    "traits": {
+     "os": 6
+    },
+    "mods": {
+     "pool_capacity": 1.05
+    }
+   },
+   "knowledge": [
+    "k_os_process",
+    "k_os_memory"
+   ],
+   "unlocks_note": "连接池有效容量 +5%：并发模型选对了，同样的池子能扛更多。",
+   "sub": 1,
+   "exam": ""
+  },
+  {
+   "id": "cs_algo",
+   "branch": "cs",
+   "col": 2,
+   "tier": 2,
+   "name": "数据结构与复杂度",
+   "desc": "B+ 树、哈希、LSM 各有赢面。复杂度要乘常数，再看数据会长到多大。",
+   "ap": 4,
+   "requires_any": [
+    "cs_arch"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 6
+    },
+    "mods": {
+     "query_time": 0.97
+    }
+   },
+   "knowledge": [
+    "k_algo_complexity",
+    "k_algo_index"
+   ],
+   "unlocks_note": "单查询 CPU 成本 -3%。",
+   "sub": 0,
+   "exam": ""
+  },
+  {
+   "id": "cs_net",
+   "branch": "cs",
+   "col": 2,
+   "tier": 2,
+   "name": "计算机网络",
+   "desc": "握手、TIME_WAIT、队头阻塞、DNS TTL。高并发下，建连本身就是成本。",
+   "ap": 4,
+   "requires_any": [
+    "cs_os"
+   ],
+   "effects": {
+    "traits": {
+     "net": 6
+    },
+    "mods": {
+     "api_overhead": 0.97
+    }
+   },
+   "knowledge": [
+    "k_net_tcp",
+    "k_net_http"
+   ],
+   "unlocks_note": "API 固定开销 -3%。",
+   "sub": 1,
+   "exam": ""
+  },
+  {
+   "id": "cs_conc",
+   "branch": "cs",
+   "col": 3,
+   "tier": 3,
+   "name": "并发与锁",
+   "desc": "锁把并行变串行，死锁来自加锁顺序不一致。别在锁里做 IO。",
+   "ap": 5,
+   "requires_all": [
+    "cs_os"
+   ],
+   "effects": {
+    "traits": {
+     "conc": 6
+    },
+    "mods": {
+     "contagion": 0.9
+    }
+   },
+   "knowledge": [
+    "k_conc_lock",
+    "k_conc_atomic"
+   ],
+   "unlocks_note": "长尾传染 -10%：慢请求不再那么容易拖垮整条链路。",
+   "sub": 0,
+   "exam": ""
+  },
+  {
+   "id": "cs_dist",
+   "branch": "cs",
+   "col": 4,
+   "tier": 4,
+   "name": "分布式系统",
+   "desc": "CAP 只在分区时做选择；重试必须幂等，否则就是在批量制造重复数据。",
+   "ap": 6,
+   "requires_all": [
+    "cs_net",
+    "cs_conc"
+   ],
+   "effects": {
+    "traits": {
+     "dist": 6
+    },
+    "mods": {
+     "replica_lag": 0.7
+    }
+   },
+   "knowledge": [
+    "k_dist_cap",
+    "k_dist_idem"
+   ],
+   "unlocks_note": "复制延迟 -30%：读写分离的代价变轻了。",
+   "sub": 0,
+   "exam": ""
+  },
+  {
+   "id": "db_t1",
+   "branch": "db",
+   "col": 2,
+   "tier": 1,
+   "name": "索引与执行计划",
+   "desc": "读懂 EXPLAIN，知道索引什么时候有效、什么时候失效。",
+   "ap": 6,
+   "effects": {
+    "skill": {
+     "db": 5
+    },
+    "mods": {
+     "query_time": 0.98
+    }
+   },
+   "knowledge": [
+    "k_db_sargable",
+    "k_db_leftmost"
+   ],
+   "unlocks_note": "解锁「优化待处理订单查询」；单查询成本 -2%。考核：写出走索引的订单列表查询。",
+   "sub": 0,
+   "exam": "ex_orders_index"
+  },
+  {
+   "id": "db_t2",
+   "branch": "db",
+   "col": 3,
+   "tier": 2,
+   "name": "查询改写（真机判题）",
+   "desc": "在真库副本上亲手写出一条走索引的区间查询，执行计划过了才算过关。",
+   "ap": 8,
+   "requires_all": [
+    "db_t1"
+   ],
+   "effects": {
+    "skill": {
+     "sql": 10
+    },
+    "mods": {
+     "query_time": 0.96
+    }
+   },
+   "knowledge": [
+    "k_db_execplan"
+   ],
+   "unlocks_note": "解锁「改写大屏 SQL」「在线 DDL」；单查询成本再 -4%。考核：把 DATE() 改写成区间查询。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_range_rewrite"
+  },
+  {
+   "id": "db_mvcc",
+   "branch": "db",
+   "col": 3,
+   "tier": 2,
+   "name": "事务与隔离级别",
+   "desc": "MVCC 让读不阻塞写，代价是版本链与长事务。幻读靠间隙锁，不靠祈祷。",
+   "ap": 6,
+   "requires_all": [
+    "db_t1"
+   ],
+   "effects": {
+    "mods": {
+     "contagion": 0.95
+    }
+   },
+   "knowledge": [
+    "k_db_mvcc",
+    "k_db_lock"
+   ],
+   "unlocks_note": "事务与锁视角。考核：把「先读再写」改成原子 UPDATE。",
+   "sub": 1,
+   "exam": "ex_atomic_update"
+  },
+  {
+   "id": "db_replica",
+   "branch": "db",
+   "col": 4,
+   "tier": 3,
+   "name": "复制与读写分离",
+   "desc": "binlog 异步重放，刚写完就可能读到旧值。关键读走主库。",
+   "ap": 7,
+   "requires_all": [
+    "db_t1"
+   ],
+   "effects": {
+    "mods": {
+     "replica_lag": 0.8
+    }
+   },
+   "knowledge": [
+    "k_db_replica"
+   ],
+   "unlocks_note": "解锁「加只读副本」。考核：算清副本能分走多少 IO。",
+   "sub": 0,
+   "exam": "ex_replica_math"
+  },
+  {
+   "id": "db_split",
+   "branch": "db",
+   "col": 4,
+   "tier": 3,
+   "name": "分库分表与冷热分离",
+   "desc": "分片解决容量，制造跨片查询。先归档，再分片。",
+   "ap": 9,
+   "requires_all": [
+    "db_t2"
+   ],
+   "effects": {
+    "mods": {
+     "query_time": 0.95
+    }
+   },
+   "knowledge": [
+    "k_db_shard"
+   ],
+   "unlocks_note": "冷热分离与分片视角。考核：写一条不锁表的在线 DDL 变更单。",
+   "sub": 1,
+   "exam": "ex_online_ddl"
+  },
+  {
+   "id": "db_t3",
+   "branch": "db",
+   "col": 5,
+   "tier": 3,
+   "name": "数据库专家（封顶）",
+   "desc": "把一条查询压到只读索引、不回表。做到这一步，你才真的算懂数据库。",
+   "ap": 12,
+   "requires_all": [
+    "db_t2"
+   ],
+   "effects": {
+    "capstone": "db"
+   },
+   "knowledge": [
+    "k_db_wal"
+   ],
+   "unlocks_note": "解锁平行结局：数据库专家。考核：把回表压成覆盖索引。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_covering"
+  },
+  {
+   "id": "db_mastery",
+   "branch": "db",
+   "col": 6,
+   "tier": 4,
+   "name": "专精：数据库内核",
+   "desc": "只此一家的路线。选了它，就不能再拿别的专精。",
+   "ap": 12,
+   "requires_all": [
+    "db_t3"
+   ],
+   "excludes": [
+    "be_mastery",
+    "sre_mastery",
+    "perf_mastery",
+    "algo_mastery",
+    "generalist"
+   ],
+   "effects": {
+    "capstone": "db",
+    "mastery": "db",
+    "mods": {
+     "query_time": 0.92,
+     "io_wait": 0.95
+    }
+   },
+   "knowledge": [
+    "k_db_wal",
+    "k_algo_index"
+   ],
+   "unlocks_note": "专精加成：单查询成本 -8%，磁盘等待 -5%。与其它专精、通才互斥。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_hotkey"
+  },
+  {
+   "id": "be_t1",
+   "branch": "backend",
+   "col": 2,
+   "tier": 1,
+   "name": "缓存与一致性",
+   "desc": "缓存不是加速，是复制数据；复制就会有不一致。",
+   "ap": 6,
+   "effects": {
+    "skill": {
+     "backend": 5
+    }
+   },
+   "knowledge": [
+    "k_be_cache_aside",
+    "k_be_stampede"
+   ],
+   "unlocks_note": "缓存策略与击穿防护。考核：写 Redis 互斥锁。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_paginate"
+  },
+  {
+   "id": "be_t2",
+   "branch": "backend",
+   "col": 3,
+   "tier": 2,
+   "name": "缓存与库的一致性（考核）",
+   "desc": "缓存和数据库是两份数据：写路径漏一条失效，用户就会看到旧状态。",
+   "ap": 8,
+   "requires_all": [
+    "be_t1"
+   ],
+   "effects": {
+    "skill": {
+     "backend": 6
+    }
+   },
+   "knowledge": [
+    "k_be_consistency"
+   ],
+   "unlocks_note": "证明你能在真实峰值下守住服务。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_idempo"
+  },
+  {
+   "id": "be_queue",
+   "branch": "backend",
+   "col": 3,
+   "tier": 2,
+   "name": "消息队列与异步",
+   "desc": "同步链路越长，尾部越容易被拖死。异步化的本质是把「等待」换成「排队 + 补偿」。",
+   "ap": 6,
+   "requires_all": [
+    "be_t1"
+   ],
+   "effects": {
+    "mods": {
+     "contagion": 0.93
+    },
+    "ap_bonus": 2
+   },
+   "knowledge": [
+    "k_be_queue"
+   ],
+   "unlocks_note": "每周行动力 +2：把同步等待改成异步排队，你的时间被释放出来。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 1,
+   "exam": "ex_fn_retry"
+  },
+  {
+   "id": "be_api",
+   "branch": "backend",
+   "col": 4,
+   "tier": 3,
+   "name": "服务治理与限流熔断",
+   "desc": "限流保自己，熔断保下游，降级保核心。降级开关必须演练过。",
+   "ap": 7,
+   "requires_all": [
+    "be_t1",
+    "cs_net"
+   ],
+   "effects": {
+    "mods": {
+     "api_overhead": 0.95
+    }
+   },
+   "knowledge": [
+    "k_be_circuit",
+    "k_be_timeout"
+   ],
+   "unlocks_note": "解锁「加限流与熔断」；单请求开销 -3%。考核：写 Nginx 限流配置。",
+   "sub": 0,
+   "exam": "ex_rate_limit"
+  },
+  {
+   "id": "be_t3",
+   "branch": "backend",
+   "col": 5,
+   "tier": 3,
+   "name": "后端工程师（封顶）",
+   "desc": "把周错误率压到 1% 以下。",
+   "ap": 12,
+   "requires_all": [
+    "be_t2"
+   ],
+   "effects": {
+    "capstone": "backend"
+   },
+   "knowledge": [
+    "k_be_pool"
+   ],
+   "unlocks_note": "解锁平行结局：后端工程师。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_circuit"
+  },
+  {
+   "id": "be_mastery",
+   "branch": "backend",
+   "col": 6,
+   "tier": 4,
+   "name": "专精：高并发架构",
+   "desc": "把应用层做成结构，而不是做成补丁。",
+   "ap": 12,
+   "requires_all": [
+    "be_t3"
+   ],
+   "excludes": [
+    "db_mastery",
+    "sre_mastery",
+    "perf_mastery",
+    "algo_mastery",
+    "generalist"
+   ],
+   "effects": {
+    "capstone": "backend",
+    "mastery": "backend",
+    "mods": {
+     "api_overhead": 0.9,
+     "contagion": 0.85
+    }
+   },
+   "knowledge": [
+    "k_be_queue",
+    "k_be_circuit"
+   ],
+   "unlocks_note": "专精加成：API 开销 -10%，长尾传染 -15%。与其它专精、通才互斥。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_order_state"
+  },
+  {
+   "id": "sre_t1",
+   "branch": "sre",
+   "col": 2,
+   "tier": 1,
+   "name": "监控与告警",
+   "desc": "先有监控，才有之后的每一次正确决策。",
+   "ap": 6,
+   "effects": {
+    "skill": {
+     "ops": 5
+    }
+   },
+   "knowledge": [
+    "k_sre_slo"
+   ],
+   "unlocks_note": "解锁「开启监控」的诊断价值。考核：写出支付成功率的 SLI 查询。",
+   "sub": 0,
+   "exam": "ex_pay_sli"
+  },
+  {
+   "id": "sre_t2",
+   "branch": "sre",
+   "col": 3,
+   "tier": 2,
+   "name": "容量规划（考核）",
+   "desc": "在大促中存活下来，且提前做过扩容准备。",
+   "ap": 8,
+   "requires_all": [
+    "sre_t1"
+   ],
+   "effects": {
+    "skill": {
+     "ops": 6
+    }
+   },
+   "knowledge": [
+    "k_sre_capacity"
+   ],
+   "unlocks_note": "解锁容量规划视角。考核：算清两个月后的峰值。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_sli"
+  },
+  {
+   "id": "sre_chaos",
+   "branch": "sre",
+   "col": 3,
+   "tier": 2,
+   "name": "混沌工程",
+   "desc": "主动注入故障，验证降级与告警真的按设计工作。",
+   "ap": 6,
+   "requires_all": [
+    "sre_t1"
+   ],
+   "effects": {
+    "mods": {
+     "contagion": 0.92
+    }
+   },
+   "knowledge": [
+    "k_sre_chaos"
+   ],
+   "unlocks_note": "事故连锁深度下降，长尾传染 -8%。",
+   "sub": 1,
+   "exam": "ex_rate_limit"
+  },
+  {
+   "id": "sre_incident",
+   "branch": "sre",
+   "col": 4,
+   "tier": 3,
+   "name": "事故复盘与值班",
+   "desc": "复盘找机制漏洞，不找替罪羊。告警必须可行动。",
+   "ap": 6,
+   "requires_all": [
+    "sre_t1"
+   ],
+   "effects": {
+    "skill": {
+     "ops": 4
+    },
+    "docs": 1
+   },
+   "knowledge": [
+    "k_sre_postmortem",
+    "k_sre_oncall"
+   ],
+   "unlocks_note": "每月自动积累 1 份文档，裁员评估时算「有工程习惯」。",
+   "sub": 0,
+   "exam": "ex_dup_find"
+  },
+  {
+   "id": "sre_t3",
+   "branch": "sre",
+   "col": 5,
+   "tier": 3,
+   "name": "SRE（封顶）",
+   "desc": "把接口 p95 压到 500ms 以下。",
+   "ap": 12,
+   "requires_all": [
+    "sre_t2"
+   ],
+   "effects": {
+    "capstone": "sre"
+   },
+   "knowledge": [
+    "k_sre_capacity"
+   ],
+   "sub": 0,
+   "exam": "ex_fn_circuit",
+   "unlocks_note": " 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。"
+  },
+  {
+   "id": "sre_mastery",
+   "branch": "sre",
+   "col": 6,
+   "tier": 4,
+   "name": "专精：稳定性架构",
+   "desc": "系统在你睡觉的时候也不出事。",
+   "ap": 12,
+   "requires_all": [
+    "sre_t3"
+   ],
+   "excludes": [
+    "db_mastery",
+    "be_mastery",
+    "perf_mastery",
+    "algo_mastery",
+    "generalist"
+   ],
+   "effects": {
+    "capstone": "sre",
+    "mastery": "sre",
+    "mods": {
+     "io_wait": 0.92,
+     "api_overhead": 0.93
+    }
+   },
+   "knowledge": [
+    "k_sre_chaos",
+    "k_sre_oncall"
+   ],
+   "unlocks_note": "专精加成：磁盘等待 -8%，API 开销 -7%。与其它专精、通才互斥。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_merge"
+  },
+  {
+   "id": "perf_pool",
+   "branch": "perf",
+   "col": 2,
+   "tier": 1,
+   "name": "连接池与排队论",
+   "desc": "池子太小排队，太大压垮数据库。ρ 接近 1 时等待指数上升。",
+   "ap": 6,
+   "requires_all": [
+    "cs_os"
+   ],
+   "effects": {
+    "mods": {
+     "pool_capacity": 1.15
+    }
+   },
+   "knowledge": [
+    "k_be_pool"
+   ],
+   "unlocks_note": "连接池有效容量 +15%。考核：用排队论算出池子该多大。",
+   "sub": 0,
+   "exam": "ex_pool_math"
+  },
+  {
+   "id": "perf_io",
+   "branch": "perf",
+   "col": 3,
+   "tier": 2,
+   "name": "磁盘 IO 路径",
+   "desc": "IOPS、吞吐、队列深度是三个上限。利用率 90% 以上，SQL 优化只是缓解。",
+   "ap": 6,
+   "requires_all": [
+    "cs_arch"
+   ],
+   "effects": {
+    "mods": {
+     "io_wait": 0.94
+    }
+   },
+   "knowledge": [
+    "k_perf_io"
+   ],
+   "unlocks_note": "磁盘等待 -6%。",
+   "sub": 0,
+   "exam": "ex_keyset"
+  },
+  {
+   "id": "perf_profile",
+   "branch": "perf",
+   "col": 3,
+   "tier": 2,
+   "name": "火焰图与热点定位",
+   "desc": "宽度是时间不是次数。先找最宽的栈，再问这条路径是否必要。",
+   "ap": 7,
+   "requires_all": [
+    "cs_os"
+   ],
+   "effects": {
+    "mods": {
+     "query_time": 0.97
+    }
+   },
+   "knowledge": [
+    "k_perf_flame"
+   ],
+   "unlocks_note": "单查询 CPU 成本 -3%。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 1,
+   "exam": "ex_fn_cost"
+  },
+  {
+   "id": "perf_load",
+   "branch": "perf",
+   "col": 4,
+   "tier": 3,
+   "name": "压测与瓶颈定位",
+   "desc": "压测不是把 QPS 打高，是在可控范围内把瓶颈逼出来：先算，再压。",
+   "ap": 8,
+   "requires_all": [
+    "perf_pool"
+   ],
+   "effects": {
+    "mods": {
+     "contagion": 0.9
+    }
+   },
+   "knowledge": [
+    "k_perf_bench"
+   ],
+   "unlocks_note": "大促准备更充分，长尾传染 -10%。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_topk"
+  },
+  {
+   "id": "perf_arch",
+   "branch": "perf",
+   "col": 5,
+   "tier": 4,
+   "name": "容量与成本取舍",
+   "desc": "每一毫秒都有价格。先做改一行 SQL 的事，再做加一个组件的事。",
+   "ap": 9,
+   "requires_all": [
+    "perf_load",
+    "perf_io"
+   ],
+   "effects": {
+    "mods": {
+     "api_overhead": 0.95,
+     "io_wait": 0.96
+    },
+    "ap_bonus": 2
+   },
+   "knowledge": [
+    "k_perf_cost"
+   ],
+   "unlocks_note": "每周行动力 +2（成本模型让你少做无用功）；跨线成本进一步下降。",
+   "sub": 0,
+   "exam": "ex_capacity_math"
+  },
+  {
+   "id": "perf_mastery",
+   "branch": "perf",
+   "col": 6,
+   "tier": 5,
+   "name": "专精：性能工程",
+   "desc": "同样的机器，压出别人压不出的吞吐。",
+   "ap": 12,
+   "requires_all": [
+    "perf_arch"
+   ],
+   "excludes": [
+    "db_mastery",
+    "be_mastery",
+    "sre_mastery",
+    "algo_mastery",
+    "generalist"
+   ],
+   "effects": {
+    "mastery": "perf",
+    "mods": {
+     "io_wait": 0.9,
+     "query_time": 0.94
+    }
+   },
+   "knowledge": [
+    "k_perf_cost",
+    "k_perf_io"
+   ],
+   "unlocks_note": "专精加成：磁盘等待 -10%，查询成本 -6%。与其它专精、通才互斥。 结业/节点考核为真实编码题（函数会被执行并逐用例判分）。",
+   "sub": 0,
+   "exam": "ex_fn_hotkey"
+  },
+  {
+   "id": "cross_cache_index",
+   "branch": "db",
+   "col": 5,
+   "tier": 3,
+   "name": "交叉：缓存 × 索引",
+   "desc": "索引减少回表，缓存减少访问。两条路的交汇处，收益是乘出来的。",
+   "ap": 7,
+   "requires_all": [
+    "db_t1",
+    "be_t1"
+   ],
+   "effects": {
+    "mods": {
+     "query_time": 0.97,
+     "io_wait": 0.97
+    }
+   },
+   "knowledge": [
+    "k_db_leftmost",
+    "k_be_cache_aside"
+   ],
+   "unlocks_note": "查询成本 -3%，磁盘等待 -3%。",
+   "sub": 1,
+   "exam": "ex_cache_lock"
+  },
+  {
+   "id": "cross_budget",
+   "branch": "sre",
+   "col": 5,
+   "tier": 4,
+   "name": "交叉：架构 × 预算",
+   "desc": "稳定性不是无限投入。把预算花在能兜住事故的那一层。",
+   "ap": 8,
+   "requires_any": [
+    "perf_arch",
+    "be_api"
+   ],
+   "effects": {
+    "mods": {
+     "api_overhead": 0.96
+    }
+   },
+   "knowledge": [
+    "k_perf_cost",
+    "k_be_circuit"
+   ],
+   "unlocks_note": "API 开销 -4%，扩容决策更省。",
+   "sub": 1,
+   "exam": "ex_replica_math"
+  },
+  {
+   "id": "generalist",
+   "branch": "cs",
+   "col": 5,
+   "tier": 6,
+   "name": "通才：T 型工程师",
+   "desc": "不押注单一路线，把几条线各打通一层。每周多 4 点行动力：你更擅长把重复的事一次性解决。",
+   "ap": 15,
+   "requires_any": [
+    "db_t2",
+    "be_t2",
+    "sre_t2"
+   ],
+   "excludes": [
+    "db_mastery",
+    "be_mastery",
+    "sre_mastery",
+    "perf_mastery",
+    "algo_mastery"
+   ],
+   "effects": {
+    "ap_bonus": 4,
+    "skill": {
+     "sql": 4,
+     "db": 4,
+     "backend": 4,
+     "ops": 4
+    },
+    "mods": {
+     "query_time": 0.96,
+     "api_overhead": 0.97,
+     "io_wait": 0.97
+    }
+   },
+   "knowledge": [
+    "k_dist_idem"
+   ],
+   "unlocks_note": "每周行动力 +4，四项技能 +4。与所有专精互斥。",
+   "sub": 0,
+   "exam": ""
+  },
+  {
+   "id": "algo_t1",
+   "branch": "algo",
+   "col": 2,
+   "tier": 2,
+   "name": "复杂度与缓存淘汰",
+   "desc": "O(n) 和 O(log n) 差的不只是常数：热点数据该留在哪一层，决定了缓存值不值。",
+   "ap": 6,
+   "requires_all": [],
+   "effects": {
+    "traits": {
+     "algo": 5
+    },
+    "mods": {
+     "query_time": 0.96
+    }
+   },
+   "knowledge": [
+    "k_algo_lru"
+   ],
+   "unlocks_note": "单查询 CPU 成本 -4%：淘汰策略选对，命中率才稳。",
+   "sub": 0,
+   "exam": "ex_fn_lru"
+  },
+  {
+   "id": "algo_ds",
+   "branch": "algo",
+   "col": 2,
+   "tier": 2,
+   "name": "区间与滑动窗口",
+   "desc": "告警窗口、限流窗口、会话区间，本质都是有序区间的合并与裁剪。",
+   "ap": 5,
+   "requires_all": [],
+   "effects": {
+    "traits": {
+     "algo": 4
+    },
+    "mods": {
+     "api_overhead": 0.98
+    }
+   },
+   "knowledge": [
+    "k_algo_interval"
+   ],
+   "unlocks_note": "应用层固定开销 -2%。",
+   "sub": 1,
+   "exam": "ex_fn_merge"
+  },
+  {
+   "id": "algo_t2",
+   "branch": "algo",
+   "col": 3,
+   "tier": 3,
+   "name": "堆与 TopK",
+   "desc": "排行榜、最慢查询、最大订单：不用把全量数据拉进内存排序。",
+   "ap": 8,
+   "requires_all": [
+    "algo_t1"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 6
+    },
+    "mods": {
+     "query_time": 0.95
+    }
+   },
+   "knowledge": [
+    "k_algo_topk"
+   ],
+   "unlocks_note": "单查询 CPU 成本再 -5%。",
+   "sub": 0,
+   "exam": "ex_fn_topk"
+  },
+  {
+   "id": "algo_stream",
+   "branch": "algo",
+   "col": 3,
+   "tier": 3,
+   "name": "频次统计与热点识别",
+   "desc": "大促时 1% 的 key 吃掉 90% 的读。先找出来，才谈本地缓存。",
+   "ap": 7,
+   "requires_all": [
+    "algo_ds"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 5
+    },
+    "mods": {
+     "pool_capacity": 1.04
+    }
+   },
+   "knowledge": [
+    "k_algo_hotkey"
+   ],
+   "unlocks_note": "连接池有效容量 +4%。",
+   "sub": 1,
+   "exam": "ex_fn_hotkey"
+  },
+  {
+   "id": "algo_adv",
+   "branch": "algo",
+   "col": 4,
+   "tier": 4,
+   "name": "近似算法与覆盖统计",
+   "desc": "精确计数太贵时，用有界误差换内存；复盘时再算清总共断了多久。",
+   "ap": 9,
+   "requires_all": [
+    "algo_t2",
+    "algo_stream"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 7
+    },
+    "mods": {
+     "io_wait": 0.96
+    },
+    "ap_bonus": 2
+   },
+   "knowledge": [
+    "k_algo_sketch"
+   ],
+   "unlocks_note": "磁盘等待 -4%；每周行动力永久 +2。",
+   "sub": 0,
+   "exam": "ex_fn_interval_cover"
+  },
+  {
+   "id": "algo_t3",
+   "branch": "algo",
+   "col": 5,
+   "tier": 5,
+   "name": "大规模数据路径设计",
+   "desc": "把索引、缓存、批处理、近似统计拼成一条能随业务增长的路径。",
+   "ap": 12,
+   "requires_all": [
+    "algo_adv"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 8
+    },
+    "mods": {
+     "query_time": 0.93
+    }
+   },
+   "knowledge": [
+    "k_algo_pipeline"
+   ],
+   "unlocks_note": "单查询 CPU 成本 -7%。",
+   "sub": 0,
+   "exam": "ex_fn_lru"
+  },
+  {
+   "id": "algo_mastery",
+   "branch": "algo",
+   "col": 6,
+   "tier": 6,
+   "name": "算法工程师（专精）",
+   "desc": "认这条路：以数据结构与复杂度为主场，把流量吃在算法里，而不是堆机器。",
+   "ap": 12,
+   "requires_all": [
+    "algo_t3"
+   ],
+   "effects": {
+    "traits": {
+     "algo": 12
+    },
+    "mods": {
+     "query_time": 0.9,
+     "pool_capacity": 1.06
+    },
+    "mastery": "algo",
+    "capstone": "algo"
+   },
+   "knowledge": [
+    "k_algo_mastery"
+   ],
+   "unlocks_note": "单查询 CPU -10%、连接池 +6%；结局方向锁定「算法工程师」。",
+   "sub": 0,
+   "exam": "ex_fn_merge",
+   "excludes": [
+    "db_mastery",
+    "be_mastery",
+    "sre_mastery",
+    "perf_mastery",
+    "generalist"
+   ]
+  }
+ ],
+ "ap_note": "节点 AP 为「读条总点数」；普通难度每周 24 点，读满后进入考核。"
+}

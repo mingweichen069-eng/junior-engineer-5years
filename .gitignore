@@ -1,0 +1,19 @@
+# 用户本地存档（私有游戏进度，不上传）
+saves/
+
+# 考核判题副本库（约 44MB，首次运行 SQL 沙箱时由 lab/replica.build() 自动重建）
+lab/replica.db
+
+# 数据库附属文件
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 系统文件
+Thumbs.db
+.DS_Store

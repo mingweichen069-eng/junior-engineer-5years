@@ -1,0 +1,247 @@
+[
+  {
+    "id": "add_index_user_created",
+    "name": "给订单表加复合索引 (user_id, created_at)",
+    "desc": "让「我的订单」直接定位。代价：磁盘变大，每次下单多维护一棵索引，且当周有锁冲击。",
+    "ap": 6,
+    "cash_cents": 0,
+    "weeks": 1,
+    "effects": [
+      {
+        "type": "add_index",
+        "table": "orders",
+        "name": "idx_orders_user_created",
+        "columns": ["user_id", "created_at"]
+      },
+      {
+        "type": "resolve_debt",
+        "debt_id": "q1_wrong_index"
+      }
+    ]
+  },
+  {
+    "id": "online_ddl",
+    "name": "用在线 DDL 加同一个索引（不锁写）",
+    "desc": "ALGORITHM=INPLACE + LOCK=NONE：多花行动力，换掉那一次锁写尖峰。需要科技「查询改写」。",
+    "ap": 10,
+    "cash_cents": 0,
+    "weeks": 1,
+    "requires": { "tech": ["db_t2"] },
+    "effects": [
+      {
+        "type": "add_index_online",
+        "table": "orders",
+        "name": "idx_orders_user_created",
+        "columns": ["user_id", "created_at"]
+      },
+      {
+        "type": "resolve_debt",
+        "debt_id": "q1_wrong_index"
+      }
+    ]
+  },
+  {
+    "id": "optimize_index",
+    "name": "重建索引（回收碎片）",
+    "desc": "写流量会让索引产生碎片、拖慢写入；整理一次可以回收。直接影响写放大与磁盘占用。",
+    "ap": 4,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "vacuum_index", "table": "orders" }]
+  },
+  {
+    "id": "archive_orders",
+    "name": "归档 90 天前的订单",
+    "desc": "订单表缩小 15%：buffer pool 装得下更多热数据，磁盘水位也降下来。",
+    "ap": 6,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [
+      { "type": "archive_orders" },
+      { "type": "resolve_debt", "debt_id": "report_demand" }
+    ]
+  },
+  {
+    "id": "cache_dashboard",
+    "name": "给运营大屏加 30 秒缓存",
+    "desc": "立刻把大屏的数据库负载压下去，代价是最多 30 秒的旧数据，并欠下一条缓存一致性债。",
+    "ap": 3,
+    "cash_cents": 0,
+    "weeks": 0,
+    "effects": [
+      { "type": "enable_cache", "query_id": "q_dashboard", "ttl_s": 30 },
+      {
+        "type": "spawn_debt",
+        "debt_id": "cache_invalidation",
+        "category": "ops",
+        "severity": 2.0,
+        "growth": 0.03,
+        "name": "缓存失效路径不完整"
+      }
+    ]
+  },
+  {
+    "id": "audit_cache",
+    "name": "审计缓存失效路径",
+    "desc": "找出绕过失效的写路径，还清缓存一致性债：事故概率直接下降。",
+    "ap": 4,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "resolve_debt", "debt_id": "cache_invalidation" }]
+  },
+  {
+    "id": "open_monitoring",
+    "name": "开启慢查询日志、APM 与告警",
+    "desc": "查询明细变可见；事故发生时错误扩散会被压住约 30%。不是装饰：这是止损能力。",
+    "ap": 3,
+    "cash_cents": 30000,
+    "weeks": 1,
+    "effects": [{ "type": "monitoring" }, { "type": "resolve_debt", "debt_id": "no_monitoring" }]
+  },
+  {
+    "id": "db_upgrade",
+    "name": "数据库升配（buffer pool +4GB、连接上限 +100）",
+    "desc": "直接抬高缓冲池命中率与并发上限：同样的 SQL，命中率上去延迟就下来。",
+    "ap": 10,
+    "cash_cents": 300000,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "db_upgrade", "buffer_gb": 4, "max_connections": 100 }]
+  },
+  {
+    "id": "expand_disk",
+    "name": "磁盘扩容（+200GB、+4000 IOPS）",
+    "desc": "容量和 IOPS 是两个独立上限。水位和随机 IO 一起压下来，写入不再被拖死。",
+    "ap": 8,
+    "cash_cents": 250000,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "expand_disk", "capacity_gb": 200, "iops": 4000 }]
+  },
+  {
+    "id": "pool_60",
+    "name": "调大连接池（+20）",
+    "desc": "减少排队等待。池子超过数据库 max_connections 会从排队变成直接拒绝。",
+    "ap": 3,
+    "cash_cents": 0,
+    "weeks": 0,
+    "repeatable": true,
+    "effects": [{ "type": "add_pool", "delta": 20 }]
+  },
+  {
+    "id": "add_server",
+    "name": "加一台应用服务器",
+    "desc": "缓解应用层排队，但不会让数据库变快。每次 +1 AP，并欠下一条服务器蔓延债。",
+    "ap": 3,
+    "cash_cents": 120000,
+    "weeks": 0,
+    "repeatable": true,
+    "effects": [
+      { "type": "add_servers", "count": 1 },
+      {
+        "type": "spawn_debt",
+        "debt_id": "server_sprawl",
+        "category": "ops",
+        "severity": 2.0,
+        "growth": 0.02,
+        "name": "服务器越来越多，维护成本上涨"
+      }
+    ]
+  },
+  {
+    "id": "consolidate_servers",
+    "name": "下线一台闲置服务器",
+    "desc": "省钱、减少蔓延债，但要确认流量真的扛得住。",
+    "ap": 3,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "consolidate_servers" }]
+  },
+  {
+    "id": "add_read_replica",
+    "name": "加一台只读副本（分流读流量）",
+    "desc": "把大屏和后台查询分到副本，主库 IO 下降约 35%/台（最多 3 台）；代价是每月 ¥1500 和复制延迟带来的轻微不一致。",
+    "ap": 6,
+    "cash_cents": 200000,
+    "weeks": 1,
+    "repeatable": true,
+    "requires": { "tech": ["db_replica"] },
+    "effects": [
+      { "type": "add_replica" },
+      {
+        "type": "spawn_debt",
+        "debt_id": "replica_lag",
+        "category": "ops",
+        "severity": 2.0,
+        "growth": 0.02,
+        "name": "只读副本延迟未监控"
+      }
+    ]
+  },
+  {
+    "id": "circuit_breaker",
+    "name": "加限流与熔断",
+    "desc": "流量突增时保住核心链路：错误率从雪崩变成有损拒绝。需要科技「服务治理」。",
+    "ap": 8,
+    "cash_cents": 0,
+    "weeks": 1,
+    "requires": { "tech": ["be_api"] },
+    "effects": [{ "type": "circuit_breaker" }, { "type": "trust", "value": 2 }]
+  },
+  {
+    "id": "backup_daily",
+    "name": "配置每日备份 + 恢复演练",
+    "desc": "平时完全看不出效果，直到真的丢了数据。备份债还清后，数据类事故不再直接判死。",
+    "ap": 4,
+    "cash_cents": 20000,
+    "weeks": 1,
+    "effects": [{ "type": "backup" }]
+  },
+  {
+    "id": "write_docs",
+    "name": "补系统文档 / 写一次复盘",
+    "desc": "换主管信任。加成递减（+2 → +1 → 0），别指望靠写文档刷绩效。",
+    "ap": 2,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "effects": [{ "type": "docs" }]
+  },
+  {
+    "id": "rewrite_dashboard",
+    "name": "改写大屏 SQL 为区间查询",
+    "desc": "把 DATE(created_at)=CURDATE() 改成范围条件，回源立刻走索引。需要科技「查询改写」。",
+    "ap": 6,
+    "cash_cents": 0,
+    "weeks": 0,
+    "requires": { "tech": ["db_t2"] },
+    "effects": [
+      { "type": "rewrite_query", "query_id": "q_dashboard" },
+      { "type": "resolve_debt", "debt_id": "nonsargable_daily_report" }
+    ]
+  },
+  {
+    "id": "rewrite_pending",
+    "name": "优化待处理订单查询",
+    "desc": "给「待处理订单」配上合适索引，还掉 schema 漂移债。需要科技「索引与执行计划」。",
+    "ap": 5,
+    "cash_cents": 0,
+    "weeks": 1,
+    "repeatable": true,
+    "requires": { "tech": ["db_t1"] },
+    "effects": [{ "type": "resolve_debt", "debt_id": "schema_drift" }]
+  },
+  {
+    "id": "automate_ops",
+    "name": "把每周的巡检与发布做成流水线",
+    "desc": "一次性投入，之后每周永久多 4 点行动力：重复劳动被脚本吃掉。",
+    "ap": 12,
+    "cash_cents": 50000,
+    "weeks": 2,
+    "effects": [{ "type": "ap_bonus", "value": 4 }]
+  }
+]

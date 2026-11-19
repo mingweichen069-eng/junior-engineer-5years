@@ -1,0 +1,103 @@
+{
+  "queries": [
+    {
+      "id": "q_my_orders",
+      "name": "我的订单",
+      "table": "orders",
+      "active": true,
+      "share": 0.015,
+      "kind": "read",
+      "predicates": [
+        {
+          "column": "user_id",
+          "op": "eq"
+        }
+      ],
+      "order_by": [
+        "created_at"
+      ],
+      "limit": 20
+    },
+    {
+      "id": "q_dashboard",
+      "name": "运营大屏",
+      "table": "orders",
+      "active": true,
+      "fixed_qps": 0.35,
+      "kind": "read",
+      "predicates": [
+        {
+          "column": "created_at",
+          "op": "non_sargable"
+        }
+      ],
+      "aggregate": true
+    },
+    {
+      "id": "q_pending",
+      "name": "待处理订单",
+      "table": "orders",
+      "active": true,
+      "share": 0.012,
+      "kind": "read",
+      "selectivity": 0.004,
+      "predicates": [
+        {
+          "column": "status",
+          "op": "eq"
+        }
+      ],
+      "order_by": [
+        "created_at"
+      ],
+      "limit": 50
+    },
+    {
+      "id": "q_detail",
+      "name": "订单详情",
+      "table": "orders",
+      "active": true,
+      "share": 0.02,
+      "kind": "read",
+      "queries_per_request": 4,
+      "predicates": [
+        {
+          "column": "id",
+          "op": "eq"
+        }
+      ]
+    },
+    {
+      "id": "q_create",
+      "name": "下单",
+      "table": "orders",
+      "active": false,
+      "share": 0.008,
+      "kind": "write",
+      "user_facing": true
+    },
+    {
+      "id": "q_pay",
+      "name": "支付回调",
+      "table": "payments",
+      "active": false,
+      "share": 0.005,
+      "kind": "write",
+      "user_facing": false
+    },
+    {
+      "id": "q_other",
+      "name": "其他请求",
+      "table": "orders",
+      "active": true,
+      "share": 0.0,
+      "fixed_share": 0.05,
+      "kind": "other"
+    }
+  ],
+  "cache_candidates": [
+    "q_my_orders",
+    "q_dashboard",
+    "q_pending"
+  ]
+}
