@@ -227,6 +227,15 @@ def snapshot(st) -> dict:  # noqa: ANN001
         "major_events": event_rules.major_for_client(st),
         "slow_queries": workbench_rules.slow_queries(st),
         "cases": workbench_rules.cases_for(st),
+        # 工作台成本 / 风险：让 UI 在玩家动手前就把代价摊开
+        "deploy_costs": {k: action_rules.deploy_cost(k)
+                         for k in ("index", "rewrite", "fix")},
+        "lab": {
+            "experiments": len(st.lab.experiments),
+            "deployments": len(st.lab.deployments),
+            "changes_this_week": workbench_rules.changes_this_week(st),
+            "incidents": len(st.career_rec.incidents),
+        },
         "decisions": event_rules.pending_for_client(st),
         "blocked": blocked,
         "pending": [{"action": p.action_id, "due": p.due_week} for p in st.actions.pending],
@@ -372,40 +381,56 @@ def create_app() -> Flask:
         return jsonify({"ok": result.get("ok", False), "message": result.get("error", ""),
                         "data": {**result, "state": snapshot(st)}})
 
+    def _wb_deploy(kind: str, label: str, call):  # noqa: ANN202
+        """三个部署端点共用的唯一入口。
+
+        1) API 层先做一次统一资源校验（行动力 / 调查精力 / 结束态）；
+           规则层 deploy_guard 还会再校验一次 —— 直接调规则函数也绕不过去。
+        2) 真正的扣费只在规则层 deploy_finish 里原子完成，API 不碰资源。
+        3) **只要状态变了就存档**（包括失败部署的勘察成本、事故代价、
+           本周变更流水）。原来只在 ok 时存档，失败一刷新成本就白扣了，
+           等于可以无限重试 —— 这正是「重复调用 API 绕过资源扣除」的通道。
+        """
+        st = load_or_new()
+        ok, why = action_rules.check_deploy(st, kind)
+        if not ok:
+            return jsonify({"ok": False, "message": why, "detail": {"charged": False},
+                            "data": snapshot(st)})
+        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} {label}")
+        result = call(st)
+        if result.get("charged") or result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({
+            "ok": result.get("ok", False),
+            "message": result.get("message", ""),
+            "detail": result,
+            "cost": result.get("cost"),
+            "risk": result.get("risk"),
+            "incident": result.get("incident", False),
+            "data": snapshot(st),
+        })
+
     @app.post("/api/workbench/deploy-index")
     def api_wb_deploy_index():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
-        st = load_or_new()
-        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 部署索引")
-        result = workbench_rules.deploy_index(st, str(payload.get("sql", "")))
-        if result.get("ok"):
-            saves.save_game(CURRENT_SLOT, st, "自动存档")
-        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
-                        "detail": result, "data": snapshot(st)})
+        sql = str(payload.get("sql", ""))
+        return _wb_deploy("index", "部署索引",
+                          lambda st: workbench_rules.deploy_index(st, sql))
 
     @app.post("/api/workbench/deploy-rewrite")
     def api_wb_deploy_rewrite():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
-        st = load_or_new()
-        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 改写查询")
-        result = workbench_rules.deploy_rewrite(st, str(payload.get("query", "")))
-        if result.get("ok"):
-            saves.save_game(CURRENT_SLOT, st, "自动存档")
-        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
-                        "data": snapshot(st)})
+        query = str(payload.get("query", ""))
+        return _wb_deploy("rewrite", "改写查询",
+                          lambda st: workbench_rules.deploy_rewrite(st, query))
 
     @app.post("/api/workbench/deploy-fix")
     def api_wb_deploy_fix():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
-        st = load_or_new()
         case_id = str(payload.get("case_id", ""))
         code = str(payload.get("code", ""))
-        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 修复 {case_id}")
-        result = workbench_rules.deploy_fix(st, case_id, code)
-        if result.get("ok"):
-            saves.save_game(CURRENT_SLOT, st, "自动存档")
-        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
-                        "detail": result.get("detail", {}), "data": snapshot(st)})
+        return _wb_deploy("fix", f"修复 {case_id}",
+                          lambda st: workbench_rules.deploy_fix(st, case_id, code))
 
     @app.post("/api/workbench/reset-lab")
     def api_wb_reset_lab():  # noqa: ANN202

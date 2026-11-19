@@ -350,7 +350,16 @@
       "goal": "实现 next_page_args(user_id, last_created_at, limit=20)：返回 dict，含 user_id 与 limit；只有传了 cursor（非 None）才额外带 cursor 键。首页不要出现 cursor。",
       "starter": "def next_page_args(user_id, last_created_at, limit=20):\n    # TODO\n    pass",
       "entry": "next_page_args",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+next_page_args"
+        ],
+        "forbid": []
+      },
+      "hint": "首页没有游标，就不要把 cursor: null 塞进查询里：DAO 会把它当成一个真的条件。",
+      "solution": "def next_page_args(user_id, last_created_at, limit=20):\n    out = {\"user_id\": user_id, \"limit\": limit}\n    if last_created_at is not None:\n        out[\"cursor\"] = last_created_at\n    return out",
+      "minutes": 10,
+      "public_cases": [
         {
           "args": [
             12345,
@@ -387,15 +396,60 @@
           }
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+next_page_args"
-        ],
-        "forbid": []
-      },
-      "hint": "首页没有游标，就不要把 cursor: null 塞进查询里：DAO 会把它当成一个真的条件。",
-      "solution": "def next_page_args(user_id, last_created_at, limit=20):\n    out = {\"user_id\": user_id, \"limit\": limit}\n    if last_created_at is not None:\n        out[\"cursor\"] = last_created_at\n    return out",
-      "minutes": 10
+      "hidden_cases": [
+        {
+          "args": [
+            0,
+            null,
+            20
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 0,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            1,
+            null,
+            20
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 1,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1,
+            null,
+            20
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": -1,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            37042,
+            null,
+            20
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 37042,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_idempo": {
       "kind": "code",
@@ -405,7 +459,16 @@
       "goal": "实现 dedup_keys(events)：events 是 [[key, value], ...]，按 key 保留第一次出现的记录，保持原顺序，返回 [[key, value], ...]。",
       "starter": "def dedup_keys(events):\n    # TODO\n    pass",
       "entry": "dedup_keys",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+dedup_keys"
+        ],
+        "forbid": []
+      },
+      "hint": "一个 set 记下见过的 key 就够了；注意保留第一次的顺序，不要用 dict 覆盖成最后一次。",
+      "solution": "def dedup_keys(events):\n    seen = set()\n    out = []\n    for key, value in events:\n        if key in seen:\n            continue\n        seen.add(key)\n        out.append([key, value])\n    return out",
+      "minutes": 10,
+      "public_cases": [
         {
           "args": [
             [
@@ -469,15 +532,198 @@
           "expect": []
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+dedup_keys"
-        ],
-        "forbid": []
-      },
-      "hint": "一个 set 记下见过的 key 就够了；注意保留第一次的顺序，不要用 dict 覆盖成最后一次。",
-      "solution": "def dedup_keys(events):\n    seen = set()\n    out = []\n    for key, value in events:\n        if key in seen:\n            continue\n        seen.add(key)\n        out.append([key, value])\n    return out",
-      "minutes": 10
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                "a",
+                1
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                "a",
+                3
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                1
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              3
+            ],
+            [
+              "b",
+              2
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              1
+            ],
+            [
+              "b",
+              2
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ],
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ],
+              [
+                "a",
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              1
+            ],
+            [
+              "b",
+              2
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ]
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_order_state": {
       "kind": "code",
@@ -487,7 +733,16 @@
       "goal": "实现 can_transition(current, target)：只允许 0→1→2→3 顺序流转；4（取消）只允许从 0 或 1 过去；原地不动一律拒绝。返回 bool。",
       "starter": "def can_transition(current, target):\n    # TODO\n    pass",
       "entry": "can_transition",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+can_transition"
+        ],
+        "forbid": []
+      },
+      "hint": "先把「正常下一步」写成一张映射表，取消作为一条单独规则；别用一堆 if 漏掉 3→4。",
+      "solution": "def can_transition(current, target):\n    nxt = {0: 1, 1: 2, 2: 3}\n    if target == 4:\n        return current in (0, 1)\n    return nxt.get(current) == target",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             0,
@@ -538,15 +793,44 @@
           "expect": false
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+can_transition"
-        ],
-        "forbid": []
-      },
-      "hint": "先把「正常下一步」写成一张映射表，取消作为一条单独规则；别用一堆 if 漏掉 3→4。",
-      "solution": "def can_transition(current, target):\n    nxt = {0: 1, 1: 2, 2: 3}\n    if target == 4:\n        return current in (0, 1)\n    return nxt.get(current) == target",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            -1,
+            1
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            7,
+            1
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            0,
+            0
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            0,
+            -1
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_retry": {
       "kind": "code",
@@ -556,7 +840,16 @@
       "goal": "实现 backoff_ms(attempt, base=100, cap=2000)：返回 base × 2^attempt，但不超过 cap。attempt 从 0 开始。",
       "starter": "def backoff_ms(attempt, base=100, cap=2000):\n    # TODO\n    pass",
       "entry": "backoff_ms",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+backoff_ms"
+        ],
+        "forbid": []
+      },
+      "hint": "先算指数再取 min，不要先截断再乘；cap 是绝对上限。",
+      "solution": "def backoff_ms(attempt, base=100, cap=2000):\n    return min(cap, base * (2 ** attempt))",
+      "minutes": 8,
+      "public_cases": [
         {
           "args": [
             0
@@ -584,15 +877,40 @@
           "expect": 200
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+backoff_ms"
-        ],
-        "forbid": []
-      },
-      "hint": "先算指数再取 min，不要先截断再乘；cap 是绝对上限。",
-      "solution": "def backoff_ms(attempt, base=100, cap=2000):\n    return min(cap, base * (2 ** attempt))",
-      "minutes": 8
+      "hidden_cases": [
+        {
+          "args": [
+            1
+          ],
+          "kwargs": {},
+          "expect": 200,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "expect": 50,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            7
+          ],
+          "kwargs": {},
+          "expect": 2000,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            16
+          ],
+          "kwargs": {},
+          "expect": 2000,
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_circuit": {
       "kind": "code",
@@ -602,7 +920,16 @@
       "goal": "实现 breaker_state(failures, threshold=5, recovering=False)：failures >= threshold 返回 'open'；recovering 为真且未熔断返回 'half_open'；failures > 0 返回 'watch'；否则 'closed'。",
       "starter": "def breaker_state(failures, threshold=5, recovering=False):\n    # TODO\n    pass",
       "entry": "breaker_state",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+breaker_state"
+        ],
+        "forbid": []
+      },
+      "hint": "判断顺序很重要：熔断（open）优先于半开（half_open），否则阈值到了还会放流量进去。",
+      "solution": "def breaker_state(failures, threshold=5, recovering=False):\n    if failures >= threshold:\n        return \"open\"\n    if recovering:\n        return \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
+      "minutes": 10,
+      "public_cases": [
         {
           "args": [
             0
@@ -644,15 +971,40 @@
           "expect": "half_open"
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+breaker_state"
-        ],
-        "forbid": []
-      },
-      "hint": "判断顺序很重要：熔断（open）优先于半开（half_open），否则阈值到了还会放流量进去。",
-      "solution": "def breaker_state(failures, threshold=5, recovering=False):\n    if failures >= threshold:\n        return \"open\"\n    if recovering:\n        return \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
-      "minutes": 10
+      "hidden_cases": [
+        {
+          "args": [
+            1
+          ],
+          "kwargs": {},
+          "expect": "watch",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "expect": "closed",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            7
+          ],
+          "kwargs": {},
+          "expect": "open",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            13
+          ],
+          "kwargs": {},
+          "expect": "open",
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_sli": {
       "kind": "code",
@@ -662,7 +1014,16 @@
       "goal": "实现 error_budget_left(total, bad, slo=0.999)：允许的错误数 = total × (1-slo)，返回 (允许 - bad) / 允许，保留 4 位小数，最低 0；允许数为 0 时返回 1.0。",
       "starter": "def error_budget_left(total, bad, slo=0.999):\n    # TODO\n    pass",
       "entry": "error_budget_left",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+error_budget_left"
+        ],
+        "forbid": []
+      },
+      "hint": "预算是「允许的错误数」而不是「请求数」；用完就是 0，不要给负数。",
+      "solution": "def error_budget_left(total, bad, slo=0.999):\n    allowed = total * (1 - slo)\n    if allowed <= 0:\n        return 1.0\n    return round(max(0.0, allowed - bad) / allowed, 4)",
+      "minutes": 10,
+      "public_cases": [
         {
           "args": [
             100000,
@@ -693,15 +1054,44 @@
           "expect": 1.0
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+error_budget_left"
-        ],
-        "forbid": []
-      },
-      "hint": "预算是「允许的错误数」而不是「请求数」；用完就是 0，不要给负数。",
-      "solution": "def error_budget_left(total, bad, slo=0.999):\n    allowed = total * (1 - slo)\n    if allowed <= 0:\n        return 1.0\n    return round(max(0.0, allowed - bad) / allowed, 4)",
-      "minutes": 10
+      "hidden_cases": [
+        {
+          "args": [
+            0,
+            30
+          ],
+          "kwargs": {},
+          "expect": 1,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            1,
+            30
+          ],
+          "kwargs": {},
+          "expect": 0,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1,
+            30
+          ],
+          "kwargs": {},
+          "expect": 1,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            300007,
+            30
+          ],
+          "kwargs": {},
+          "expect": 0.9,
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_cost": {
       "kind": "code",
@@ -711,7 +1101,16 @@
       "goal": "实现 required_servers(peak_qps, per_server=120, safety=1.3)：返回 ceil(peak_qps × safety / per_server)，peak_qps 为 0 时返回 0。不能用 import。",
       "starter": "def required_servers(peak_qps, per_server=120, safety=1.3):\n    # TODO\n    pass",
       "entry": "required_servers",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+required_servers"
+        ],
+        "forbid": []
+      },
+      "hint": "不能用 math.ceil：先整除，再看余数是不是还要补一台。",
+      "solution": "def required_servers(peak_qps, per_server=120, safety=1.3):\n    target = peak_qps * safety\n    if target <= 0:\n        return 0\n    n = int(target // per_server)\n    if n * per_server < target:\n        n += 1\n    return n",
+      "minutes": 10,
+      "public_cases": [
         {
           "args": [
             850,
@@ -745,15 +1144,58 @@
           "expect": 1
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+required_servers"
-        ],
-        "forbid": []
-      },
-      "hint": "不能用 math.ceil：先整除，再看余数是不是还要补一台。",
-      "solution": "def required_servers(peak_qps, per_server=120, safety=1.3):\n    target = peak_qps * safety\n    if target <= 0:\n        return 0\n    n = int(target // per_server)\n    if n * per_server < target:\n        n += 1\n    return n",
-      "minutes": 10
+      "hidden_cases": [
+        {
+          "args": [
+            0,
+            120,
+            1.3
+          ],
+          "kwargs": {},
+          "expect": 0,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            1,
+            120,
+            1.3
+          ],
+          "kwargs": {},
+          "expect": 1,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1,
+            120,
+            1.3
+          ],
+          "kwargs": {},
+          "expect": 0,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            2557,
+            120,
+            1.3
+          ],
+          "kwargs": {},
+          "expect": 28,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            850,
+            0,
+            1.3
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_lru": {
       "kind": "code",
@@ -763,7 +1205,16 @@
       "goal": "实现 lru_hits(keys, capacity)：按 LRU（最久未用的先淘汰）模拟访问，返回命中次数。capacity 至少为 1。",
       "starter": "def lru_hits(keys, capacity):\n    # TODO\n    pass",
       "entry": "lru_hits",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+lru_hits"
+        ],
+        "forbid": []
+      },
+      "hint": "命中之后要把它挪到队尾（最近使用）；淘汰永远从队头拿最久没用的那个。",
+      "solution": "def lru_hits(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return hits",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             [
@@ -813,15 +1264,83 @@
           "expect": 0
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+lru_hits"
-        ],
-        "forbid": []
-      },
-      "hint": "命中之后要把它挪到队尾（最近使用）；淘汰永远从队头拿最久没用的那个。",
-      "solution": "def lru_hits(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return hits",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            [],
+            2
+          ],
+          "kwargs": {},
+          "expect": 0,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": 0,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              2,
+              3,
+              1,
+              2,
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": 1,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2,
+              1,
+              2,
+              1,
+              3,
+              2,
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": 5,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            0
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_topk": {
       "kind": "code",
@@ -831,7 +1350,16 @@
       "goal": "实现 top_k(nums, k)：返回最大的 k 个数，按降序；k 超过长度就返回全部降序；空列表返回空列表。",
       "starter": "def top_k(nums, k):\n    # TODO\n    pass",
       "entry": "top_k",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+top_k"
+        ],
+        "forbid": []
+      },
+      "hint": "重复值要保留（不是去重后的 TopK）；切片超过长度会自动截断。",
+      "solution": "def top_k(nums, k):\n    return sorted(nums, reverse=True)[:k]",
+      "minutes": 8,
+      "public_cases": [
         {
           "args": [
             [
@@ -886,15 +1414,110 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+top_k"
-        ],
-        "forbid": []
-      },
-      "hint": "重复值要保留（不是去重后的 TopK）；切片超过长度会自动截断。",
-      "solution": "def top_k(nums, k):\n    return sorted(nums, reverse=True)[:k]",
-      "minutes": 8
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              3
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            3
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              2,
+              9,
+              5,
+              1,
+              4,
+              1,
+              3
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            5,
+            4
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            9,
+            9
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            5,
+            4
+          ],
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_merge": {
       "kind": "code",
@@ -904,7 +1527,16 @@
       "goal": "实现 merge_intervals(intervals)：输入 [[start,end], ...]，合并所有重叠/相接（s <= 上一段 end）的区间，返回合并后的 [[start,end], ...]，按 start 升序。空输入返回空列表。",
       "starter": "def merge_intervals(intervals):\n    # TODO\n    pass",
       "entry": "merge_intervals",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+merge_intervals"
+        ],
+        "forbid": []
+      },
+      "hint": "先按 start 排序，再线性扫一遍；相接（s == 上一段 end）也算重叠。",
+      "solution": "def merge_intervals(intervals):\n    if not intervals:\n        return []\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    return out",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             [
@@ -984,15 +1616,246 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+merge_intervals"
-        ],
-        "forbid": []
-      },
-      "hint": "先按 start 排序，再线性扫一遍；相接（s == 上一段 end）也算重叠。",
-      "solution": "def merge_intervals(intervals):\n    if not intervals:\n        return []\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    return out",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              1,
+              3
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                15,
+                18
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                1,
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              1,
+              6
+            ],
+            [
+              8,
+              10
+            ],
+            [
+              15,
+              18
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              1,
+              6
+            ],
+            [
+              8,
+              10
+            ],
+            [
+              15,
+              18
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                15,
+                18
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              1,
+              6
+            ],
+            [
+              8,
+              10
+            ],
+            [
+              15,
+              18
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ]
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_hotkey": {
       "kind": "code",
@@ -1002,7 +1865,16 @@
       "goal": "实现 hot_keys(keys, threshold=3)：返回出现次数 >= threshold 的 key 列表，按 key 升序；没有就返回空列表。",
       "starter": "def hot_keys(keys, threshold=3):\n    # TODO\n    pass",
       "entry": "hot_keys",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+hot_keys"
+        ],
+        "forbid": []
+      },
+      "hint": "一次遍历计数，再筛 + 排序；别用嵌套循环数重复。",
+      "solution": "def hot_keys(keys, threshold=3):\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    return sorted([k for k, n in counts.items() if n >= threshold])",
+      "minutes": 9,
+      "public_cases": [
         {
           "args": [
             [
@@ -1053,15 +1925,96 @@
           "expect": []
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+hot_keys"
-        ],
-        "forbid": []
-      },
-      "hint": "一次遍历计数，再筛 + 排序；别用嵌套循环数重复。",
-      "solution": "def hot_keys(keys, threshold=3):\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    return sorted([k for k, n in counts.items() if n >= threshold])",
-      "minutes": 9
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            "a"
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "c",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            "a",
+            "b",
+            "c"
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            "a",
+            "b"
+          ],
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_interval_cover": {
       "kind": "code",
@@ -1071,7 +2024,16 @@
       "goal": "实现 covered_length(intervals)：先按 merge_intervals 的规则合并重叠区间，再返回所有合并后区间长度之和（end - start，不是闭区间 +1）。",
       "starter": "def covered_length(intervals):\n    # TODO\n    pass",
       "entry": "covered_length",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+covered_length"
+        ],
+        "forbid": []
+      },
+      "hint": "先合并再求和，直接把原区间长度相加会重复计算重叠部分。",
+      "solution": "def covered_length(intervals):\n    if not intervals:\n        return 0\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    total = 0\n    for s, e in out:\n        total += e - s\n    return total",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             [
@@ -1128,15 +2090,166 @@
           "expect": 10
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+covered_length"
-        ],
-        "forbid": []
-      },
-      "hint": "先合并再求和，直接把原区间长度相加会重复计算重叠部分。",
-      "solution": "def covered_length(intervals):\n    if not intervals:\n        return 0\n    xs = sorted([list(i) for i in intervals])\n    out = [xs[0]]\n    for s, e in xs[1:]:\n        if s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    total = 0\n    for s, e in out:\n        total += e - s\n    return total",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": 2,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                8,
+                10
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                1,
+                3
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": 7,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": 7,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": 7,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ]
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_paginate_h": {
       "kind": "code",
@@ -1146,7 +2259,16 @@
       "goal": "实现 page_args(user_id, cursor, direction='next', limit=20, has_more=False)：返回 dict 恒含 user_id/limit/direction/has_more；cursor 非空才带 cursor；direction 只能是 'next' 或 'prev'，其他值一律按 'next'。",
       "starter": "def page_args(user_id, cursor, direction='next', limit=20, has_more=False):\n    # TODO\n    pass",
       "entry": "page_args",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+page_args"
+        ],
+        "forbid": []
+      },
+      "hint": "非法 direction 要兜底成 next，别把脏参数透传给 DAO。",
+      "solution": "def page_args(user_id, cursor, direction='next', limit=20, has_more=False):\n    out = {\"user_id\": user_id, \"limit\": limit,\n           \"direction\": direction if direction in (\"next\", \"prev\") else \"next\",\n           \"has_more\": bool(has_more)}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n    return out",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             1,
@@ -1192,15 +2314,65 @@
           }
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+page_args"
-        ],
-        "forbid": []
-      },
-      "hint": "非法 direction 要兜底成 next，别把脏参数透传给 DAO。",
-      "solution": "def page_args(user_id, cursor, direction='next', limit=20, has_more=False):\n    out = {\"user_id\": user_id, \"limit\": limit,\n           \"direction\": direction if direction in (\"next\", \"prev\") else \"next\",\n           \"has_more\": bool(has_more)}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n    return out",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            0,
+            null
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 0,
+            "limit": 20,
+            "direction": "next",
+            "has_more": false
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1,
+            null
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": -1,
+            "limit": 20,
+            "direction": "next",
+            "has_more": false
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            10,
+            null
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 10,
+            "limit": 20,
+            "direction": "next",
+            "has_more": false
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            1,
+            0
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 1,
+            "limit": 20,
+            "direction": "next",
+            "has_more": false,
+            "cursor": 0
+          },
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_order_state_h": {
       "kind": "code",
@@ -1210,7 +2382,16 @@
       "goal": "实现 next_states(current)：返回该状态允许跳转到的状态列表（升序）。规则：0→[1,4]，1→[2,4,5]，2→[3,5]，3→[6]，4/5/6 是终态→[]。",
       "starter": "def next_states(current):\n    # TODO\n    pass",
       "entry": "next_states",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+next_states"
+        ],
+        "forbid": []
+      },
+      "hint": "终态和未知状态都返回空列表，别让状态机自己造出一个不存在的状态。",
+      "solution": "def next_states(current):\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    return sorted(table.get(current, []))",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             0
@@ -1266,15 +2447,40 @@
           "expect": []
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+next_states"
-        ],
-        "forbid": []
-      },
-      "hint": "终态和未知状态都返回空列表，别让状态机自己造出一个不存在的状态。",
-      "solution": "def next_states(current):\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    return sorted(table.get(current, []))",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            7
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            10
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            13
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_circuit_h": {
       "kind": "code",
@@ -1284,7 +2490,16 @@
       "goal": "实现 breaker_state(failures, open_ticks, threshold=5, cooldown=3)：failures>=threshold 且 open_ticks < cooldown → 'open'；failures>=threshold 且 open_ticks >= cooldown → 'half_open'；failures>0 → 'watch'；否则 'closed'。",
       "starter": "def breaker_state(failures, open_ticks, threshold=5, cooldown=3):\n    # TODO\n    pass",
       "entry": "breaker_state",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+breaker_state"
+        ],
+        "forbid": []
+      },
+      "hint": "冷却时间是「已经开了多久」，不是「还要等多久」。",
+      "solution": "def breaker_state(failures, open_ticks, threshold=5, cooldown=3):\n    if failures >= threshold:\n        return \"open\" if open_ticks < cooldown else \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             0,
@@ -1330,15 +2545,44 @@
           "expect": "half_open"
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+breaker_state"
-        ],
-        "forbid": []
-      },
-      "hint": "冷却时间是「已经开了多久」，不是「还要等多久」。",
-      "solution": "def breaker_state(failures, open_ticks, threshold=5, cooldown=3):\n    if failures >= threshold:\n        return \"open\" if open_ticks < cooldown else \"half_open\"\n    if failures > 0:\n        return \"watch\"\n    return \"closed\"",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            1,
+            0
+          ],
+          "kwargs": {},
+          "expect": "watch",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1,
+            0
+          ],
+          "kwargs": {},
+          "expect": "closed",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            7,
+            0
+          ],
+          "kwargs": {},
+          "expect": "open",
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            0,
+            1
+          ],
+          "kwargs": {},
+          "expect": "closed",
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_lru_h": {
       "kind": "code",
@@ -1348,7 +2592,16 @@
       "goal": "实现 lru_state(keys, capacity)：返回 [hits, cache]，cache 按「最久未用 → 最近使用」排列，元素是 key。capacity 至少 1。",
       "starter": "def lru_state(keys, capacity):\n    # TODO\n    pass",
       "entry": "lru_state",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+lru_state"
+        ],
+        "forbid": []
+      },
+      "hint": "返回的是两个值组成的列表；命中后记得把 key 挪到队尾。",
+      "solution": "def lru_state(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [hits, cache]",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             [
@@ -1414,15 +2667,124 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+lru_state"
-        ],
-        "forbid": []
-      },
-      "hint": "返回的是两个值组成的列表；命中后记得把 key 挪到队尾。",
-      "solution": "def lru_state(keys, capacity):\n    cache = []\n    hits = 0\n    for k in keys:\n        if k in cache:\n            hits += 1\n            cache.remove(k)\n            cache.append(k)\n        else:\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [hits, cache]",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            0,
+            [
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              2,
+              3,
+              1,
+              2,
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            1,
+            [
+              2,
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2,
+              1,
+              2,
+              1,
+              3,
+              2,
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            5,
+            [
+              3,
+              2
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            12,
+            [
+              2,
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              2
+            ],
+            0
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_topk_h": {
       "kind": "code",
@@ -1432,7 +2794,16 @@
       "goal": "实现 top_k_unique(nums, k)：先去重，再返回最大的 k 个数（降序）；k 超过去重后数量就返回全部。",
       "starter": "def top_k_unique(nums, k):\n    # TODO\n    pass",
       "entry": "top_k_unique",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+top_k_unique"
+        ],
+        "forbid": []
+      },
+      "hint": "set 去重会丢顺序，但后面反正要降序排，没问题。",
+      "solution": "def top_k_unique(nums, k):\n    return sorted(set(nums), reverse=True)[:k]",
+      "minutes": 9,
+      "public_cases": [
         {
           "args": [
             [
@@ -1487,15 +2858,110 @@
           "expect": []
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+top_k_unique"
-        ],
-        "forbid": []
-      },
-      "hint": "set 去重会丢顺序，但后面反正要降序排，没问题。",
-      "solution": "def top_k_unique(nums, k):\n    return sorted(set(nums), reverse=True)[:k]",
-      "minutes": 9
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              3
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            3
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              2,
+              9,
+              5,
+              1,
+              4,
+              1,
+              3
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            5,
+            4
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            5,
+            4
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              3,
+              1,
+              4,
+              1,
+              5,
+              9,
+              2,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4,
+              3,
+              1,
+              4
+            ],
+            3
+          ],
+          "kwargs": {},
+          "expect": [
+            9,
+            5,
+            4
+          ],
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_sli_h": {
       "kind": "code",
@@ -1505,7 +2971,16 @@
       "goal": "实现 window_error_rate(samples, window=3, budget=0.01)：samples 是 [[total, bad], ...]，只取最后 window 片，返回 [rate, over]；rate = 总 bad / 总 total 保留 4 位小数，总 total 为 0 时 rate=0.0；over 为 rate 是否严格大于 budget 的 bool。",
       "starter": "def window_error_rate(samples, window=3, budget=0.01):\n    # TODO\n    pass",
       "entry": "window_error_rate",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+window_error_rate"
+        ],
+        "forbid": []
+      },
+      "hint": "取最后 window 片再求和；rate 严格大于 budget 才算超（等于不算）。",
+      "solution": "def window_error_rate(samples, window=3, budget=0.01):\n    recent = samples[-window:]\n    total = sum(s[0] for s in recent)\n    bad = sum(s[1] for s in recent)\n    if total == 0:\n        return [0.0, False]\n    rate = round(bad / total, 4)\n    return [rate, rate > budget]",
+      "minutes": 12,
+      "public_cases": [
         {
           "args": [
             [
@@ -1583,15 +3058,178 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+window_error_rate"
-        ],
-        "forbid": []
-      },
-      "hint": "取最后 window 片再求和；rate 严格大于 budget 才算超（等于不算）。",
-      "solution": "def window_error_rate(samples, window=3, budget=0.01):\n    recent = samples[-window:]\n    total = sum(s[0] for s in recent)\n    bad = sum(s[1] for s in recent)\n    if total == 0:\n        return [0.0, False]\n    rate = round(bad / total, 4)\n    return [rate, rate > budget]",
-      "minutes": 12
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                1000,
+                2
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            0.002,
+            false
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                2
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            0.0033,
+            false
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            0.0033,
+            false
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ],
+              [
+                1000,
+                2
+              ],
+              [
+                1000,
+                3
+              ],
+              [
+                1000,
+                5
+              ]
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            0.0033,
+            false
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ]
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_paginate_v": {
       "kind": "code",
@@ -1601,7 +3239,16 @@
       "goal": "实现 build_query(user_id, cursor=None, limit=20, sign='s')：limit 夹到 [1,50]；返回 dict 含 user_id/limit；cursor 非空时带 cursor 与 sign，否则都不带。",
       "starter": "def build_query(user_id, cursor=None, limit=20, sign='s'):\n    # TODO\n    pass",
       "entry": "build_query",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+build_query"
+        ],
+        "forbid": []
+      },
+      "hint": "先夹 limit，再决定带不带 cursor/sign；两个字段要同进同出。",
+      "solution": "def build_query(user_id, cursor=None, limit=20, sign='s'):\n    lim = max(1, min(50, limit))\n    out = {\"user_id\": user_id, \"limit\": lim}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n        out[\"sign\"] = sign\n    return out",
+      "minutes": 13,
+      "public_cases": [
         {
           "args": [
             1
@@ -1650,15 +3297,57 @@
           }
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+build_query"
-        ],
-        "forbid": []
-      },
-      "hint": "先夹 limit，再决定带不带 cursor/sign；两个字段要同进同出。",
-      "solution": "def build_query(user_id, cursor=None, limit=20, sign='s'):\n    lim = max(1, min(50, limit))\n    out = {\"user_id\": user_id, \"limit\": lim}\n    if cursor is not None:\n        out[\"cursor\"] = cursor\n        out[\"sign\"] = sign\n    return out",
-      "minutes": 13
+      "hidden_cases": [
+        {
+          "args": [
+            0
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 0,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": -1,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            10
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 10,
+            "limit": 20
+          },
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            0,
+            "c",
+            999,
+            "k"
+          ],
+          "kwargs": {},
+          "expect": {
+            "user_id": 0,
+            "limit": 50,
+            "cursor": "c",
+            "sign": "k"
+          },
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_order_state_v": {
       "kind": "code",
@@ -1668,7 +3357,16 @@
       "goal": "实现 valid_path(states)：states 是状态列表。合法转移：0→1/4，1→2/4/5，2→3/5，3→6，4/5/6 终态；第一个状态必须是 0；单元素 [0] 合法。返回 bool。",
       "starter": "def valid_path(states):\n    # TODO\n    pass",
       "entry": "valid_path",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+valid_path"
+        ],
+        "forbid": []
+      },
+      "hint": "空路径不合法；用 zip 逐对检查，别只看首尾。",
+      "solution": "def valid_path(states):\n    if not states or states[0] != 0:\n        return False\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    for a, b in zip(states, states[1:]):\n        if b not in table.get(a, []):\n            return False\n    return True",
+      "minutes": 14,
+      "public_cases": [
         {
           "args": [
             [
@@ -1733,15 +3431,96 @@
           "expect": false
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+valid_path"
-        ],
-        "forbid": []
-      },
-      "hint": "空路径不合法；用 zip 逐对检查，别只看首尾。",
-      "solution": "def valid_path(states):\n    if not states or states[0] != 0:\n        return False\n    table = {0: [1, 4], 1: [2, 4, 5], 2: [3, 5], 3: [6]}\n    for a, b in zip(states, states[1:]):\n        if b not in table.get(a, []):\n            return False\n    return True",
-      "minutes": 14
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              3,
+              2,
+              1,
+              0
+            ]
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              0,
+              1,
+              2,
+              0,
+              1,
+              2,
+              0,
+              1,
+              2
+            ]
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3,
+              0,
+              1,
+              2,
+              3
+            ]
+          ],
+          "kwargs": {},
+          "expect": false,
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_lru_v": {
       "kind": "code",
@@ -1751,7 +3530,16 @@
       "goal": "实现 lru_trace(keys, capacity)：返回 [flags, cache]，flags 是与 keys 等长的 0/1 列表（1=命中），cache 按最久未用→最近使用排列。",
       "starter": "def lru_trace(keys, capacity):\n    # TODO\n    pass",
       "entry": "lru_trace",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+lru_trace"
+        ],
+        "forbid": []
+      },
+      "hint": "flags 与输入等长；淘汰后新 key 放队尾。",
+      "solution": "def lru_trace(keys, capacity):\n    cache = []\n    flags = []\n    for k in keys:\n        if k in cache:\n            flags.append(1)\n            cache.remove(k)\n            cache.append(k)\n        else:\n            flags.append(0)\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [flags, cache]",
+      "minutes": 13,
+      "public_cases": [
         {
           "args": [
             [
@@ -1827,15 +3615,155 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+lru_trace"
-        ],
-        "forbid": []
-      },
-      "hint": "flags 与输入等长；淘汰后新 key 放队尾。",
-      "solution": "def lru_trace(keys, capacity):\n    cache = []\n    flags = []\n    for k in keys:\n        if k in cache:\n            flags.append(1)\n            cache.remove(k)\n            cache.append(k)\n        else:\n            flags.append(0)\n            if len(cache) >= capacity:\n                cache.pop(0)\n            cache.append(k)\n    return [flags, cache]",
-      "minutes": 13
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              0
+            ],
+            [
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              3,
+              1,
+              2,
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              0,
+              0,
+              0,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              1,
+              2,
+              1,
+              3,
+              1,
+              2,
+              1,
+              3
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              1,
+              0,
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1,
+              1,
+              2,
+              1
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              1,
+              2,
+              1,
+              3
+            ],
+            0
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_topk_v": {
       "kind": "code",
@@ -1845,7 +3773,16 @@
       "goal": "实现 stable_top_k(pairs, k)：pairs 是 [[id, amount], ...]，按 amount 降序、amount 相同按 id 升序，取前 k 个，返回 id 列表。",
       "starter": "def stable_top_k(pairs, k):\n    # TODO\n    pass",
       "entry": "stable_top_k",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+stable_top_k"
+        ],
+        "forbid": []
+      },
+      "hint": "排序键写成 (-amount, id)，一个 sorted 就够。",
+      "solution": "def stable_top_k(pairs, k):\n    xs = sorted(pairs, key=lambda p: (-p[1], p[0]))\n    return [p[0] for p in xs[:k]]",
+      "minutes": 11,
+      "public_cases": [
         {
           "args": [
             [
@@ -1915,15 +3852,131 @@
           "expect": []
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+stable_top_k"
-        ],
-        "forbid": []
-      },
-      "hint": "排序键写成 (-amount, id)，一个 sorted 就够。",
-      "solution": "def stable_top_k(pairs, k):\n    xs = sorted(pairs, key=lambda p: (-p[1], p[0]))\n    return [p[0] for p in xs[:k]]",
-      "minutes": 11
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                3,
+                50
+              ]
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            3
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                2,
+                90
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                3,
+                50
+              ]
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            2,
+            1
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                3,
+                50
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                2,
+                90
+              ],
+              [
+                3,
+                50
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                2,
+                90
+              ],
+              [
+                3,
+                50
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                2,
+                90
+              ]
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect": [
+            2,
+            2
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                3,
+                50
+              ],
+              [
+                1,
+                50
+              ],
+              [
+                2,
+                90
+              ]
+            ],
+            0
+          ],
+          "kwargs": {},
+          "expect": [],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ],
+            2
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_merge_v": {
       "kind": "code",
@@ -1933,7 +3986,16 @@
       "goal": "实现 largest_gap(intervals, horizon)：先合并重叠区间（同 merge_intervals），再计算 [0, horizon] 内未被覆盖的最长连续长度。输入区间都落在 [0, horizon] 内。",
       "starter": "def largest_gap(intervals, horizon):\n    # TODO\n    pass",
       "entry": "largest_gap",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+largest_gap"
+        ],
+        "forbid": []
+      },
+      "hint": "别忘了最后一段（末尾区间到 horizon），也别忘了开头那一段。",
+      "solution": "def largest_gap(intervals, horizon):\n    xs = sorted([list(i) for i in intervals])\n    out = []\n    for s, e in xs:\n        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    best, cur = 0, 0\n    for s, e in out:\n        if s > cur:\n            best = max(best, s - cur)\n        cur = max(cur, e)\n    return max(best, horizon - cur)",
+      "minutes": 14,
+      "public_cases": [
         {
           "args": [
             [
@@ -1990,15 +4052,123 @@
           "expect": 5
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+largest_gap"
-        ],
-        "forbid": []
-      },
-      "hint": "别忘了最后一段（末尾区间到 horizon），也别忘了开头那一段。",
-      "solution": "def largest_gap(intervals, horizon):\n    xs = sorted([list(i) for i in intervals])\n    out = []\n    for s, e in xs:\n        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    best, cur = 0, 0\n    for s, e in out:\n        if s > cur:\n            best = max(best, s - cur)\n        cur = max(cur, e)\n    return max(best, horizon - cur)",
-      "minutes": 14
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ]
+            ],
+            12
+          ],
+          "kwargs": {},
+          "expect": 9,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                8,
+                10
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            12
+          ],
+          "kwargs": {},
+          "expect": 2,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ],
+            12
+          ],
+          "kwargs": {},
+          "expect": 2,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                6
+              ],
+              [
+                8,
+                10
+              ]
+            ],
+            0
+          ],
+          "kwargs": {},
+          "expect": 2,
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              0
+            ],
+            12
+          ],
+          "kwargs": {},
+          "expect_raises": true,
+          "note": "异常输入"
+        }
+      ]
     },
     "ex_fn_hotkey_v": {
       "kind": "code",
@@ -2008,7 +4178,16 @@
       "goal": "实现 hot_report(keys, n=2)：返回 [top, share]。top 是出现次数最多的 n 个 key（次数降序，次数相同按 key 升序）组成的列表；share 是这些 key 的总次数 / 总请求数，保留 4 位小数。空输入返回 [[], 0.0]。",
       "starter": "def hot_report(keys, n=2):\n    # TODO\n    pass",
       "entry": "hot_report",
-      "cases": [
+      "checks": {
+        "must": [
+          "def\\s+hot_report"
+        ],
+        "forbid": []
+      },
+      "hint": "次数相同按 key 升序；share 的分母是总请求数，不是去重后的 key 数。",
+      "solution": "def hot_report(keys, n=2):\n    if not keys:\n        return [[], 0.0]\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    order = sorted(counts, key=lambda k: (-counts[k], k))\n    top = order[:n]\n    share = round(sum(counts[k] for k in top) / len(keys), 4)\n    return [top, share]",
+      "minutes": 13,
+      "public_cases": [
         {
           "args": [
             [
@@ -2072,15 +4251,105 @@
           ]
         }
       ],
-      "checks": {
-        "must": [
-          "def\\s+hot_report"
-        ],
-        "forbid": []
-      },
-      "hint": "次数相同按 key 升序；share 的分母是总请求数，不是去重后的 key 数。",
-      "solution": "def hot_report(keys, n=2):\n    if not keys:\n        return [[], 0.0]\n    counts = {}\n    for k in keys:\n        counts[k] = counts.get(k, 0) + 1\n    order = sorted(counts, key=lambda k: (-counts[k], k))\n    top = order[:n]\n    share = round(sum(counts[k] for k in top) / len(keys), 4)\n    return [top, share]",
-      "minutes": 13
+      "hidden_cases": [
+        {
+          "args": [
+            [
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a"
+            ],
+            1
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "c",
+              "a",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              "b"
+            ],
+            0.8
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "c",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              "b"
+            ],
+            0.8
+          ],
+          "note": "边界条件 / 不同数据规模"
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "a",
+              "c",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a",
+              "a",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "expect": [
+            [
+              "a",
+              "b"
+            ],
+            0.9412
+          ],
+          "note": "边界条件 / 不同数据规模"
+        }
+      ]
     },
     "ex_fn_sql_h": {
       "kind": "sql",

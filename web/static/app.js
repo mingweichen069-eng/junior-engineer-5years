@@ -1326,7 +1326,23 @@ function renderWbResult() {
           .map((c) => `<div class="case-row ${c.ok ? "ok" : "bad"}">用例 ${c.i}：期望 ${esc(c.expect)} ｜ 得到 ${esc(c.got)}</div>`)
           .join("")}</div>`
       : ""}
+    ${d.public || d.hidden
+      ? `<div class="wb-regression">回归统计：公开 ${num((d.public || {}).passed || 0, 0)}/${num((d.public || {}).total || 0, 0)}
+          · 隐藏 ${num((d.hidden || {}).passed || 0, 0)}/${num((d.hidden || {}).total || 0, 0)}
+          ${(d.hidden || {}).failed ? ` · 隐藏第 ${num(d.hidden.failed, 0)} 例未过（输入不公开）` : ""}</div>`
+      : ""}
     ${d.row_count != null ? `<div class="muted">返回 ${d.row_count} 行 · ${num(d.elapsed_ms || 0, 1)} ms</div>` : ""}
+    ${d.cost
+      ? `<div class="wb-cost"><b>这次变更的代价</b>
+          <div>行动力 −${num(d.cost.ap, 0)} · 调查精力 −${num(d.cost.energy, 0)} · 占用本周一个发布窗口（下周 p95 抖动 ${num(d.change_window_ms || 0, 0)} ms）</div>
+          ${d.risk ? `<div>事故概率 ${num(d.risk.total * 100, 0)}%：基础 ${num(d.risk.base * 100, 0)}% ＋ 未经实验 ${num(d.risk.untested * 100, 0)}% ＋ 本周连续变更 ${num(d.risk.consecutive * 100, 0)}%${d.risk.verified ? " · 已在实验库验证过" : " · 尚未在实验库验证"}</div>` : ""}
+        </div>`
+      : ""}
+    ${d.incident
+      ? `<div class="wb-warn incident"><b>上线后出了事故</b>
+          <div>未经充分验证的变更引发短时故障并回滚：主管信任 −${num((d.incident_detail || {}).trust_lost || 0, 0)}、工单 +${num((d.incident_detail || {}).tickets || 0, 0)}、SLA 赔偿 ¥${num(((d.incident_detail || {}).cash_cents || 0) / 100, 0)}，下周 p95 / 错误率会如实反映。</div>
+        </div>`
+      : ""}
   </div>`;
 }
 
@@ -1335,6 +1351,10 @@ function panelWorkbench() {
   const slow = S.slow_queries || [];
   const assets = S.assets || { indexes: [], facilities: {}, rewritten_queries: [], fixes: [] };
   const cases = S.cases || [];
+  const costs = S.deploy_costs || {};
+  const lab = S.lab || { experiments: 0, deployments: 0, changes_this_week: 0, incidents: 0 };
+  const assetCount = (assets.indexes || []).length + (assets.rewritten_queries || []).length
+    + (assets.fixes || []).length + Object.keys(assets.facilities || {}).length;
   if (!wbFixCase && cases.length) wbFixCase = cases[0].id;
   const cur = cases.find((c) => c.id === wbFixCase) || cases[0] || {};
   if (!wbFixCode && cur.starter) wbFixCode = cur.starter;
@@ -1346,6 +1366,22 @@ function panelWorkbench() {
       ? `<section class="card danger"><h3>正在冲击线上的重大事件 <span class="right">${majors.length} 起</span></h3>
           ${majors.map(majorCard).join("")}</section>`
       : '<div class="banner info">目前没有未解决的重大事件。继续维护参数，问题会自己找上门。</div>'}
+    <section class="card"><h3>动手前先看代价 <span class="right">统一部署成本 · 三态分离</span></h3>
+      <div class="wb-costbar">${[["index", "部署索引"], ["rewrite", "查询改写"], ["fix", "代码修复"]]
+        .map(([k, label]) => {
+          const c = costs[k] || { ap: 0, energy: 0 };
+          return `<div class="wb-costcell"><b>${label}</b>
+            <span>行动力 −${num(c.ap, 0)} · 调查精力 −${num(c.energy, 0)} · 失败也要付勘察成本</span></div>`;
+        }).join("")}</div>
+      <div class="wb-tristate">
+        <div><b>${num(lab.experiments, 0)}</b><span>实验记录（个人经验）</span></div>
+        <div><b>${num(lab.deployments, 0)}</b><span>部署流水（上线过的变更）</span></div>
+        <div><b>${num(assetCount, 0)}</b><span>公司资产（真正影响模拟）</span></div>
+      </div>
+      <p class="ins-note" style="margin-top:0">实验只是「在实验库里验证过」，不会自动变成公司资产；
+        部署过一次，资产才真的生效。本周已上线 ${num(lab.changes_this_week, 0)} 次，
+        连续变更与未经实验都会推高事故概率——系统允许你直接上线，只是代价要自己承担。</p>
+    </section>
     <section class="card"><h3>调查：慢查询与索引</h3>
       <div class="wb-query-grid">${slow
         .map((q) => `<div class="wb-query">
@@ -1380,6 +1416,16 @@ function panelWorkbench() {
           ${c.deployed ? "✓ " : ""}${esc(c.title)}</button>`)
         .join("")}</div>
       <div class="wb-brief">${esc(cur.brief || "")}</div>
+      <div class="wb-case-detail">
+        <div class="wb-case-detail-h">公开样例（可以先自己跑一遍）· ${num((cur.cases || []).length, 0)} 条</div>
+        ${(cur.cases || []).map((c, i) =>
+          `<div class="case-row">用例 ${i + 1}：输入 ${esc(JSON.stringify(c.args || []))}
+           ｜ 期望 ${esc(c.expect_raises ? "抛出异常" : JSON.stringify(c.expect == null ? null : c.expect))}</div>`
+        ).join("")}
+        <div class="wb-hidden-note">生产还有 <b>${num(cur.hidden_count || 0, 0)}</b> 个隐藏回归用例
+          （边界条件 / 异常输入 / 更大数据规模），输入不公开；后端会连公开带隐藏一起跑，
+          只针对样例硬编码的写法会在隐藏用例上挂掉。</div>
+      </div>
       <textarea id="wb-fix" class="wb-code tall" spellcheck="false" oninput="wbFixCode=this.value">${esc(wbFixCode)}</textarea>
       <div class="row-actions">
         <button data-wb-fix="1" class="primary">跑回归并部署</button>

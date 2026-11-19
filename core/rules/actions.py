@@ -278,3 +278,76 @@ def reset_ap(state: GameState) -> None:
         state.player.ap = 999
     else:
         state.player.ap = ap_cap(state)
+
+
+# ---------------- 生产变更：统一的资源校验与成本 ----------------
+# V1.1：工作台的索引 / 查询改写 / 代码修复和行动面板共用同一套行动力、
+# 调查精力与现金。校验与扣费都放在这里，任何调用方（Web API、测试夹具、
+# 平衡脚本）都绕不过去；Web 层只负责转发和存档。
+#
+# 时间成本有三层，全部复用现有机制，不新造一套：
+#   1) AP 是每周重置的额度（见 reset_ap / ap_cap），一周只能做几次变更；
+#   2) 每次变更计入 actions_this_week，动作越多下周调查精力回复越少；
+#   3) 变更占用当周发布窗口：同一周连续上线没有观察期，风险递增（见 workbench.risk_of）。
+# 事故不是考试惩罚，是真实的工程后果：p95 冲击、错误率、信任、工单、
+# SLA 赔偿与履历污点（见 workbench._apply_incident）。
+#
+# survey_*：一次「提交到生产但没成功」的变更仍会消耗勘察 / 回滚成本，
+# 因为工程师确实花了时间排查；它比成功部署便宜，但绝不是零成本。
+
+DEPLOY_COST = {
+    "index":   {"ap": 6, "energy": 5, "cash_cents": 0, "survey_ap": 2, "survey_energy": 2},
+    "rewrite": {"ap": 6, "energy": 5, "cash_cents": 0, "survey_ap": 2, "survey_energy": 2},
+    "fix":     {"ap": 5, "energy": 5, "cash_cents": 0, "survey_ap": 2, "survey_energy": 2},
+}
+
+
+def deploy_cost(kind: str) -> dict:
+    """查成本表。未知类型直接报错，避免静默地「免费部署」。"""
+    if kind not in DEPLOY_COST:
+        raise ValueError(f"未知的生产变更类型 {kind}")
+    return dict(DEPLOY_COST[kind])
+
+
+def check_deploy(state: GameState, kind: str) -> tuple[bool, str]:
+    """统一资源校验：只读，不改状态。
+
+    与 check() 一致：沙盘不校验（无限资源，只做实验）；已结束的局不允许变更。
+    这里刻意不检查任何技能 / 科技门槛 —— 玩家不会也能直接上手。
+    """
+    deploy_cost(kind)  # 先保证 kind 合法
+    if state.ending.ended and not state.meta.sandbox:
+        return False, "游戏已经结束"
+    if state.meta.sandbox:
+        return True, ""
+    c = DEPLOY_COST[kind]
+    if state.player.ap < c["ap"]:
+        return False, f"行动力不足（需要 {c['ap']}，剩余 {state.player.ap}）"
+    if state.player.energy < c["energy"]:
+        return False, f"调查精力不足（需要 {c['energy']}，剩余 {state.player.energy:.0f}）"
+    # 只有真正要花钱的变更才校验现金。负债经营的公司不该连「零成本的
+    # 代码修复」都被挡在门外 —— 那会变成变相的资格门槛。
+    if c["cash_cents"] > 0 and state.company.cash_cents < c["cash_cents"]:
+        return False, "现金不足"
+    return True, ""
+
+
+def charge_deploy(state: GameState, kind: str, *, survey_only: bool = False) -> dict:
+    """原子扣费。survey_only=True 表示这次变更没成功，只收勘察 / 回滚成本。
+
+    返回实际扣掉的资源，供前端把「这一下花了什么」解释给玩家。
+    """
+    c = deploy_cost(kind)
+    ap = int(c["survey_ap"] if survey_only else c["ap"])
+    energy = float(c["survey_energy"] if survey_only else c["energy"])
+    cash = int(c["cash_cents"])
+
+    if state.meta.sandbox:
+        return {"ap": 0, "energy": 0.0, "cash": 0, "sandbox": True}
+
+    state.player.ap = max(0, state.player.ap - ap)
+    state.player.energy = max(0.0, state.player.energy - energy)
+    state.company.cash_cents -= cash
+    # 和行动面板一样占用本周一个动作位：动作越多，下周调查精力回复越少
+    state.actions.actions_this_week += 1
+    return {"ap": ap, "energy": energy, "cash": cash, "sandbox": False}

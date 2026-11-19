@@ -12,6 +12,11 @@ SQL 题一定要真的执行成功，且目标条件由 EXPLAIN QUERY PLAN 判�
 
 难度分层（v0.9）：简单 / 普通共用基础题库；困难 / 老手各有自己的加严变体，
 但**任何难度都含编码题**，不会出现「某个难度全是填空选择」。
+
+v1.1 阶段二：公开用例与隐藏回归用例分离。前端只能拿 public_cases；
+后端 validate_regression() 同时跑 public_cases + hidden_cases，隐藏用例的
+输入 / 期望值 / 异常文本都不进返回明细。执行环境补上墙钟超时、内存峰值、
+递归深度与超大常量限制。这是生产回归，不是考试：跑通就部署，跑不通继续查。
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ import ast
 import json
 import re
 import sys
+import time
+import tracemalloc
 from pathlib import Path
 
 CONTENT = Path(__file__).resolve().parents[2] / "content"
@@ -69,11 +76,30 @@ def task_for(node: dict, state=None) -> dict | None:
     return data["tasks"].get(key)
 
 
+def public_cases(task: dict | None) -> list[dict]:
+    """前端可见的公开用例。兼容只有 cases 的旧题（v0.9 生成器 / 测试夹具）。"""
+    if not task:
+        return []
+    return list(task.get("public_cases") or task.get("cases") or [])
+
+
+def hidden_cases(task: dict | None) -> list[dict]:
+    """只在后端执行的隐藏回归用例：边界条件、异常输入、不同数据规模。"""
+    if not task:
+        return []
+    return list(task.get("hidden_cases") or [])
+
+
+def regression_cases(task: dict | None) -> list[dict]:
+    """判题用的全量用例 = 公开 + 隐藏。前端永远拿不到这个合并结果的内容。"""
+    return public_cases(task) + hidden_cases(task)
+
+
 def public_task(task: dict | None) -> dict | None:
-    """给前端的题目：含公开测试用例，但不含参考答案。"""
+    """给前端的题目：只有公开测试用例，不含隐藏用例、不含参考答案。"""
     if not task:
         return None
-    cases = task.get("cases") or []
+    cases = public_cases(task)
     return {
         "kind": task["kind"],
         "title": task.get("title", "考核"),
@@ -85,7 +111,8 @@ def public_task(task: dict | None) -> dict | None:
         "unit": task.get("unit", ""),
         "minutes": task.get("minutes", 8),
         "entry": task.get("entry", ""),
-        # 编码题公开用例（输入 + 期望输出），方便玩家自己先跑一遍；不公开 solution
+        # 公开用例（输入 + 期望输出），方便玩家自己先跑一遍；
+        # 不公开隐藏回归用例，也不公开 solution
         "cases": [
             {"args": c.get("args", []), "kwargs": c.get("kwargs", {}), "expect": c.get("expect")}
             for c in cases
@@ -106,6 +133,14 @@ SAFE_BUILTINS = {
     "sum": sum, "tuple": tuple, "zip": zip,
 }
 STEP_LIMIT = 20000
+
+# v1.1 阶段二：生产回归的执行边界。单机轻量沙箱，不引入额外框架；
+# 墙钟检查挂在已有的 step tracer 上（每 256 行看一次），用例之间再查一次。
+WALL_LIMIT_SEC = 2.0
+MEM_LIMIT_BYTES = 24 * 1024 * 1024
+RECURSION_LIMIT = 160
+MAX_INT_CONST = 1_000_000
+TRACE_CHECK_EVERY = 256
 
 
 def human(pat: str) -> str:
@@ -212,12 +247,22 @@ class _StepLimit(Exception):
     pass
 
 
+class _WallLimit(Exception):
+    pass
+
+
+class _MemoryLimit(Exception):
+    pass
+
+
 def _canon(v):
     """把返回值归一化，避免 tuple / list 之类只在类型上不同的假失败。"""
     if isinstance(v, (tuple, list)):
         return [_canon(x) for x in v]
     if isinstance(v, dict):
         return {str(k): _canon(x) for k, x in v.items()}
+    if isinstance(v, (set, frozenset)):
+        return sorted((_canon(x) for x in v), key=repr)
     if isinstance(v, float) and v.is_integer():
         return int(v)
     return v
@@ -236,20 +281,43 @@ def _step_tracer(frame, event, arg):
         _step_tracer.count += 1
         if _step_tracer.count > STEP_LIMIT:
             raise _StepLimit()
+        if _step_tracer.count % TRACE_CHECK_EVERY == 0:
+            if time.monotonic() - _step_tracer.start > WALL_LIMIT_SEC:
+                raise _WallLimit()
+            if _step_tracer.tracing:
+                peak = tracemalloc.get_traced_memory()[1]
+                if peak > MEM_LIMIT_BYTES:
+                    raise _MemoryLimit()
     return _step_tracer
 
 
 _step_tracer.count = 0
+_step_tracer.start = 0.0
+_step_tracer.tracing = False
 
 
-def _check_code(task: dict, answer: str) -> tuple[bool, str, dict]:
-    """编码题：真的执行玩家写的函数，逐个用例比对输出。
+def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[bool, str, dict]:
+    """生产回归：真的执行玩家写的函数，公开 + 隐藏用例逐个比对。
 
-    安全边界：AST 白名单（禁 import / global / 双下划线）、受限 builtins、
-    执行步数上限（防死循环）。这是本地单机判题，不做网络/文件访问。
+    安全边界（进程内轻量沙箱，不联网 / 不读文件，不引入额外框架）：
+    - AST 白名单：禁 import / global / 双下划线 / 超大整数常量；
+    - 受限 builtins（没有 open / eval / exec / __import__）；
+    - 执行步数上限 + 墙钟超时（防死循环）；
+    - tracemalloc 峰值 + 受限递归深度（防内存 / 栈爆掉）。
+
+    hide_hidden=True 时，隐藏用例的输入、期望值、实际值和异常文本都不进
+    返回明细，只给「第几例没过」和统计 —— API 因此不会把隐藏用例送回前端。
     """
     text = str(answer or "")
-    detail: dict = {"kind": "code", "cases": [], "passed": 0, "total": 0}
+    pub = public_cases(task)
+    hid = hidden_cases(task)
+    cases = pub + hid
+    n_pub = len(pub)
+    detail: dict = {
+        "kind": "code", "cases": [], "passed": 0, "total": len(cases),
+        "public": {"total": n_pub, "passed": 0},
+        "hidden": {"total": len(hid), "passed": 0},
+    }
     if len(text) > 6000:
         return False, "答卷太长了（超过 6000 字符）", detail
     checks = task.get("checks") or {}
@@ -267,15 +335,24 @@ def _check_code(task: dict, answer: str) -> tuple[bool, str, dict]:
         return False, f"语法错误：第 {ex.lineno} 行 {ex.msg}", detail
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
-            return False, "考核里不允许 import / global，直接把函数写完就行", detail
+            return False, "回归里不允许 import / global，直接把函数写完就行", detail
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, "不允许访问双下划线属性", detail
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             return False, "不允许访问双下划线名字", detail
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) \
+                and not isinstance(node.value, bool) and abs(node.value) > MAX_INT_CONST:
+            return False, "代码里出现了过大的常量（超出回归环境限制）", detail
+        # 10**9 这类幂运算会绕过上面的常量检查，却在 C 层一次性吃掉几个 G
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow) \
+                and isinstance(node.right, ast.Constant) \
+                and isinstance(node.right.value, (int, float)) \
+                and not isinstance(node.right.value, bool) and node.right.value > 8:
+            return False, "代码里出现了过大的幂运算（超出回归环境限制）", detail
 
     ns: dict = {"__builtins__": SAFE_BUILTINS, "__name__": "exam_answer"}
     try:
-        exec(compile(tree, "<exam>", "exec"), ns)
+        exec(compile(tree, "<regression>", "exec"), ns)
     except Exception as ex:  # noqa: BLE001
         detail["error"] = str(ex)
         return False, f"代码加载失败：{ex}", detail
@@ -284,38 +361,82 @@ def _check_code(task: dict, answer: str) -> tuple[bool, str, dict]:
     if not callable(fn):
         return False, f"没找到函数 {entry}（注意函数名与缩进）", detail
 
-    cases = task.get("cases") or []
-    detail["total"] = len(cases)
     old_trace = sys.gettrace()
+    old_recursion = sys.getrecursionlimit()
+    was_tracing = tracemalloc.is_tracing()
+    if not was_tracing:
+        tracemalloc.start()
+    _step_tracer.tracing = True
     try:
+        sys.setrecursionlimit(RECURSION_LIMIT)
         for i, case in enumerate(cases, 1):
+            is_hidden = i > n_pub
             _step_tracer.count = 0
+            _step_tracer.start = time.monotonic()
             sys.settrace(_step_tracer)
             try:
                 got = fn(*(case.get("args") or []), **(case.get("kwargs") or {}))
+                raised = None
+            except (_StepLimit, _WallLimit, _MemoryLimit, RecursionError):
+                raise
+            except Exception as ex:  # noqa: BLE001
+                got, raised = None, ex
             finally:
                 sys.settrace(old_trace)
+
             expect = case.get("expect")
-            ok = _canon(got) == _canon(expect)
-            detail["cases"].append({
-                "i": i, "args": _safe_repr(case.get("args")),
-                "expect": _safe_repr(expect), "got": _safe_repr(got), "ok": bool(ok),
-            })
+            if case.get("expect_raises"):
+                ok = raised is not None
+            elif raised is not None:
+                ok = False
+            else:
+                ok = _canon(got) == _canon(expect)
+            bucket = "hidden" if is_hidden else "public"
             if ok:
                 detail["passed"] += 1
-            else:
+                detail[bucket]["passed"] += 1
+            if not is_hidden:
+                detail["cases"].append({
+                    "i": i, "args": _safe_repr(case.get("args")),
+                    "expect": _safe_repr("<异常输入>" if case.get("expect_raises") else expect),
+                    "got": _safe_repr(got) if raised is None else f"<{type(raised).__name__}>",
+                    "ok": bool(ok),
+                })
+            if not ok:
+                if is_hidden and hide_hidden:
+                    detail["hidden"]["failed"] = i - n_pub
+                    detail.pop("error", None)   # 异常文本可能夹带隐藏输入，一并抹掉
+                    return False, (
+                        f"第 {i - n_pub} 个隐藏回归用例没过："
+                        "去检查边界条件、异常输入和更大数据规模（输入不公开）。"
+                    ), detail
+                if raised is not None:
+                    return False, f"运行时报错：{type(raised).__name__}: {raised}", detail
                 return False, (
                     f"第 {i} 个用例没过：输入 {_safe_repr(case.get('args'))}，"
                     f"期望 {_safe_repr(expect)}，得到 {_safe_repr(got)}"
                 ), detail
+        # 最后一个用例若是纯 C 长调用，line 事件里查不到超时，这里兜底一次
+        if time.monotonic() - _step_tracer.start > WALL_LIMIT_SEC:
+            return False, "回归执行超时（可能有死循环或超大计算）", detail
     except _StepLimit:
         return False, "代码跑了太多步，可能有死循环", detail
+    except _WallLimit:
+        return False, "回归执行超时（可能有死循环或超大计算）", detail
+    except _MemoryLimit:
+        return False, "回归占用内存超限，请减小数据规模", detail
+    except RecursionError:
+        return False, "递归太深，超出回归环境限制", detail
     except Exception as ex:  # noqa: BLE001
         detail["error"] = str(ex)
         return False, f"运行时报错：{type(ex).__name__}: {ex}", detail
     finally:
         sys.settrace(old_trace)
-    return True, f"通过（{detail['passed']}/{detail['total']} 个用例）", detail
+        sys.setrecursionlimit(old_recursion)
+        _step_tracer.tracing = False
+        if not was_tracing:
+            tracemalloc.stop()
+    return True, f"通过（{detail['passed']}/{detail['total']} 个用例，其中隐藏 {len(hid)} 个）", detail
 
 
 def validate(task: dict, answer: str) -> tuple[bool, str, dict]:
@@ -323,7 +444,8 @@ def validate(task: dict, answer: str) -> tuple[bool, str, dict]:
         return False, "这道题没有配置", {}
     kind = task.get("kind")
     if kind == "code":
-        return _check_code(task, answer)
+        # v1.1：即使走旧的 validate 入口，也跑公开 + 隐藏，且隐藏明细脱敏
+        return _check_code(task, answer, hide_hidden=True)
     if kind == "sql":
         return _check_sql(task, answer)
     if kind == "text":
@@ -331,6 +453,22 @@ def validate(task: dict, answer: str) -> tuple[bool, str, dict]:
     if kind == "number":
         return _check_number(task, answer)
     return False, f"未知题型 {kind}", {}
+
+
+def validate_regression(task: dict, answer: str) -> tuple[bool, str, dict]:
+    """工程工作台专用：公开 + 隐藏一起跑，隐藏用例绝不通过 API 回传前端。
+
+    与 validate() 的区别不是「换了个函数名」：
+    - 只接受 code 类型的生产修复；
+    - 用例来自 public_cases + hidden_cases 的真实合并；
+    - 返回明细里没有隐藏用例的 args / expect / got / 异常文本；
+    - 跑通才允许部署，跑不通只是一次失败发布（由工作台按工程成本结算）。
+    """
+    if task is None:
+        return False, "没有这个修复用例", {}
+    if task.get("kind") != "code":
+        return False, "生产回归只支持代码修复", {}
+    return _check_code(task, answer, hide_hidden=True)
 
 
 def solution(node: dict, state=None) -> str:

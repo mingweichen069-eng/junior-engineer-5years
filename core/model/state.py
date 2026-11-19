@@ -286,6 +286,19 @@ class TechState:
 
 
 @dataclass
+class LabState:
+    """实验室 / 变更流水：让「做过实验」「上线过」「公司里有」是三种不同状态。
+
+    - experiments：玩家在实验库里验证过的方案（按物理签名记），只是个人经验，
+      不会自动变成公司资产；部署时用它判断这次变更有没有被验证过。
+    - deployments：每次生产变更的流水（成本、风险、是否出事故），用于
+      去重、防重复扣费、以及复盘。它不是公司资产本身。
+    """
+    experiments: list[dict] = field(default_factory=list)
+    deployments: list[dict] = field(default_factory=list)
+
+
+@dataclass
 class GameState:
     meta: Meta
     company: Company
@@ -305,3 +318,4 @@ class GameState:
     tech: TechState = field(default_factory=TechState)
     assets: CompanyAssets = field(default_factory=CompanyAssets)
     career_rec: CareerRecord = field(default_factory=CareerRecord)
+    lab: LabState = field(default_factory=LabState)

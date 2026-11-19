@@ -209,7 +209,10 @@ def evaluate_peak(state: GameState, catalog: list[dict] | None = None) -> PeakMe
     if io_util >= 0.90:
         over = (io_util - 0.90) / 0.10
         error_rate = max(error_rate, min(0.5, 0.25 * over * min(1.0, p95_ms / 800.0)))
-    # 朴素 DDL 的锁冲击：生效当周写入被锁，出现一次尖峰
+    # 生产变更窗口：上一周刚上线，本周有一次温和的 p95 抖动（不强制拉高错误率）
+    if state.flags.get("change_week") == state.meta.week:
+        p95_ms = max(p95_ms, float(state.flags.get("change_ms", 0.0)))
+    # 朴素 DDL 的锁冲击 / 未经验证变更引发的事故：生效当周写入被锁，出现一次尖峰
     if state.flags.get("lock_week") == state.meta.week:
         lock_ms = float(state.flags.get("lock_ms", 0.0))
         p95_ms = max(p95_ms, lock_ms)

@@ -12,6 +12,13 @@ P = Path(__file__).resolve().parents[1] / "content" / "exams.json"
 d = json.loads(P.read_text(encoding="utf-8"))
 T = d["tasks"]
 
+# v1.1 阶段二起，题库拆成 public_cases / hidden_cases；本脚本是 v0.9 的一次性出题器，
+# CODE() 会把同名题重写成只有 cases，重跑会把隐藏回归用例整批冲掉。检测到新格式就退出。
+if any("hidden_cases" in t for t in T.values() if isinstance(t, dict)):
+    print("跳过：content/exams.json 已是 v1.1 格式（含 hidden_cases）。")
+    print("本脚本仅用于 v0.9 历史出题，不要用它覆盖现有题库。")
+    sys.exit(0)
+
 
 def CODE(key, title, role, brief, goal, starter, entry, cases, solution, hint, minutes=10):
     T[key] = {
