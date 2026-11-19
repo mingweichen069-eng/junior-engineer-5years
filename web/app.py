@@ -18,6 +18,7 @@ from core.rules import constants as C  # noqa: E402
 from core.rules import debt as debt_rules, diagnose as diagnose_rules  # noqa: E402
 from core.rules import events as event_rules  # noqa: E402
 from core.rules import tech as tech_rules  # noqa: E402
+from core.rules import workbench as workbench_rules  # noqa: E402
 from core.rules.evaluate import evaluate_peak  # noqa: E402
 from core.rules import exam as exam_rules  # noqa: E402
 from core.rules import difficulty as difficulty_rules  # noqa: E402
@@ -37,48 +38,32 @@ def month_of(week: int) -> int:
 
 
 def _tech_snapshot(st) -> dict:  # noqa: ANN001
+    """技术档案：六轨道只是分类。没有前置、读条、考核、解锁，也不 gate 任何操作。"""
     data = tech_rules.load()
     branches = data["branches"]
+    rows = tech_rules.archive_rows(st)
+    by_id = {n["id"]: n for n in data["nodes"]}
     nodes = []
-    for node in data["nodes"]:
-        status = tech_rules.node_status(st, node)
-        branch = branches.get(node["branch"], {})
+    for r in rows:
+        n = by_id.get(r["id"], {})
+        branch = branches.get(r["branch"], {})
+        state = ("deployed" if r["deployed"] else "experimented" if r["experimented"]
+                 else "seen" if r["seen"] else "untouched")
         nodes.append({
-            "id": node["id"], "branch": node["branch"], "tier": node["tier"],
-            "col": node.get("col", node["tier"]), "sub": node.get("sub", 0), "row": branch.get("row", 0),
-            "name": node["name"], "desc": node["desc"],
-            "ap": status["ap"], "base_ap": status["base_ap"],
-            "requires": node.get("requires_all", []),
-            "requires_all": node.get("requires_all", []),
-            "requires_any": node.get("requires_any", []),
-            "knowledge": node.get("knowledge", []),
-            "unlocks_note": node.get("unlocks_note", ""),
-            "progress": status["progress"], "ready": status["ready"],
-            "remaining": status["remaining"], "full": status["full"],
-            "exam_state": status["exam_state"], "exam_until": status["exam_until"],
-            "exam_fails": status["exam_fails"], "cooling": status["cooling"],
-            "examined": status["examined"],
-            "unlocked": status["unlocked"], "req_ok": status["req_ok"],
-            "excluded_by": status["excluded_by"],
-            "switch_penalty": status["switch_penalty"],
-            "is_mastery": bool(node.get("effects", {}).get("mastery")),
-            "exam_kind": (exam_rules.task_for(node, st) or {}).get("kind", ""),
-            "studying": status["studying"], "rate": status["rate"],
+            "id": r["id"], "branch": r["branch"], "tier": r["tier"],
+            "col": n.get("col", r["tier"]), "sub": n.get("sub", 0), "row": branch.get("row", 0),
+            "name": r["name"], "desc": r["desc"],
+            "seen": r["seen"], "experimented": r["experimented"],
+            "deployed": r["deployed"], "incident": r["incident"],
+            "weeks": r["weeks"], "state": state,
         })
     return {
         "branches": branches,
         "nodes": nodes,
         "layout": data.get("layout", {"min_col": 1, "max_col": 6}),
-        "direction": st.tech.direction,
-        "direction_label": branches.get(st.tech.direction, {}).get("name", ""),
-        "mastery": st.tech.mastery,
-        "ap_bonus": st.tech.ap_bonus,
-        "active": st.tech.active,
-        "exams": tech_rules.pending_exams(st),
-        "exam_enabled": bool(difficulty_rules.get(st).get("tech_exam", True)),
-        "exam_set": exam_rules.load().get("difficulty_sets", {}).get(st.meta.difficulty, {}),
-        "exams_passed": int(st.tech.exams_passed),
-        "exams_failed": int(st.tech.exams_failed),
+        "deployed": sum(1 for r in rows if r["deployed"]),
+        "experimented": sum(1 for r in rows if r["experimented"]),
+        "total": len(rows),
     }
 
 
@@ -117,12 +102,10 @@ def snapshot(st) -> dict:  # noqa: ANN001
         "energy": int(st.player.energy),
         "energy_cap": tech_rules.ENERGY_CAP,
         "energy_regen": int(difficulty_rules.get(st).get("study_regen", 12)),
-        "study_rate": tech_rules.study_rate(st),
         "energy_penalty": tech_rules.energy_penalty(st),
         "energy_regen_eff": tech_rules.energy_regen(st),
         "energy_overload": tech_rules.overload_drain(st),
         "actions_this_week": int(st.actions.actions_this_week),
-        "studying": st.tech.active,
         "review_week": int(st.meta.review_week),
         "review_done": bool(st.meta.review_done),
         "review_pending": bool(st.review.pending),
@@ -134,7 +117,7 @@ def snapshot(st) -> dict:  # noqa: ANN001
         "last_event_week": int(st.events.last_event_week),
         "ap_bonus": {
             "base": int(difficulty_rules.get(st).get("ap_base", 24)),
-            "tech": int(st.tech.ap_bonus),
+            "tech": 0,
             "event": int(st.player.ap_bonus_event),
             "temp": int(st.player.ap_temp_bonus) if st.player.ap_temp_until >= st.meta.week else 0,
             "temp_until": int(st.player.ap_temp_until),
@@ -219,8 +202,31 @@ def snapshot(st) -> dict:  # noqa: ANN001
         },
         "tech": _tech_snapshot(st),
         "traits": tech_rules.trait_totals(st),
-        "tech_mods": {k: round(v, 3) for k, v in tech_rules.mods(st).items()},
+        "tech_mods": {
+            k: round(float(v), 3)
+            for k, v in tech_rules.mods(st).items()
+            if k != "per_query" and isinstance(v, (int, float))
+        },
         "knowledge": tech_rules.knowledge_rows(st),
+        "assets": {
+            "indexes": [
+                {"name": i.name, "table": i.table, "columns": i.columns,
+                 "effective_for": i.effective_for, "week": i.week}
+                for i in st.assets.indexes
+            ],
+            "facilities": dict(st.assets.facilities),
+            "rewritten_queries": list(st.assets.rewritten_queries),
+            "fixes": list(st.assets.fixes),
+            "docs": st.assets.docs,
+        },
+        "career": {
+            "resolved_events": list(st.career_rec.resolved_events[-12:]),
+            "incidents": list(st.career_rec.incidents[-12:]),
+            "projects": list(st.career_rec.projects[-12:]),
+        },
+        "major_events": event_rules.major_for_client(st),
+        "slow_queries": workbench_rules.slow_queries(st),
+        "cases": workbench_rules.cases_for(st),
         "decisions": event_rules.pending_for_client(st),
         "blocked": blocked,
         "pending": [{"action": p.action_id, "due": p.due_week} for p in st.actions.pending],
@@ -336,15 +342,6 @@ def create_app() -> Flask:
             "data": {"state": to_jsonable(st), "snapshot": snapshot(st)},
         })
 
-    @app.post("/api/tech/study")
-    def api_tech_study():  # noqa: ANN202
-        payload = request.get_json(silent=True) or {}
-        st = load_or_new()
-        ok, msg = tech_rules.toggle_study(st, payload.get("node", ""))
-        if ok:
-            saves.save_game(CURRENT_SLOT, st, "自动存档")
-        return jsonify({"ok": ok, "message": msg, "data": snapshot(st)})
-
     @app.post("/api/event/choose")
     def api_event_choose():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
@@ -354,39 +351,84 @@ def create_app() -> Flask:
             saves.save_game(CURRENT_SLOT, st, "自动存档")
         return jsonify({"ok": ok, "message": msg, "data": snapshot(st)})
 
-    @app.get("/api/tech/exam")
-    def api_tech_exam_get():  # noqa: ANN202
-        node_id = request.args.get("node", "")
-        st = load_or_new()
-        node = tech_rules.node_def(tech_rules.load(), node_id)
-        if node is None:
-            return jsonify({"ok": False, "message": "没有这个节点"}), 404
-        status = tech_rules.node_status(st, node)
-        task = exam_rules.public_task(exam_rules.task_for(node, st))
-        return jsonify({"ok": True, "data": {
-            "node": node_id,
-            "name": node["name"],
-            "branch": node["branch"],
-            "desc": node.get("desc", ""),
-            "task": task,
-            "status": status,
-            "week": st.meta.week,
-            "difficulty": st.meta.difficulty,
-            "exam_set": exam_rules.load().get("difficulty_sets", {}).get(st.meta.difficulty, {}),
-        }})
+    # ---------------- v1.0：工程工作台 ----------------
+    # 没有「读条」「考核」「交卷」「冷却」。玩家随时可以动手，
+    # 服务器只如实返回执行计划、物理结果与生产后果。
 
-    @app.post("/api/tech/exam/submit")
-    def api_tech_exam_submit():  # noqa: ANN202
+    @app.post("/api/workbench/inspect")
+    def api_wb_inspect():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
         st = load_or_new()
-        node_id = payload.get("node", "")
-        answer = payload.get("answer", "")
-        if not str(answer).strip():
-            return jsonify({"ok": False, "message": "答卷是空的", "data": snapshot(st)})
-        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 考核 {node_id}")
-        ok, msg, detail = tech_rules.submit_exam(st, node_id, str(answer))
+        result = workbench_rules.inspect(st, str(payload.get("sql", "")))
+        return jsonify({"ok": result.get("ok", False), "data": {**result, "state": snapshot(st)}})
+
+    @app.post("/api/workbench/experiment")
+    def api_wb_experiment():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        result = workbench_rules.experiment(st, str(payload.get("sql", "")))
+        if result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False), "message": result.get("error", ""),
+                        "data": {**result, "state": snapshot(st)}})
+
+    @app.post("/api/workbench/deploy-index")
+    def api_wb_deploy_index():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 部署索引")
+        result = workbench_rules.deploy_index(st, str(payload.get("sql", "")))
+        if result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
+                        "detail": result, "data": snapshot(st)})
+
+    @app.post("/api/workbench/deploy-rewrite")
+    def api_wb_deploy_rewrite():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 改写查询")
+        result = workbench_rules.deploy_rewrite(st, str(payload.get("query", "")))
+        if result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
+                        "data": snapshot(st)})
+
+    @app.post("/api/workbench/deploy-fix")
+    def api_wb_deploy_fix():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        case_id = str(payload.get("case_id", ""))
+        code = str(payload.get("code", ""))
+        saves.save_snapshot(CURRENT_SLOT, st, f"W{st.meta.week} 修复 {case_id}")
+        result = workbench_rules.deploy_fix(st, case_id, code)
+        if result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
+                        "detail": result.get("detail", {}), "data": snapshot(st)})
+
+    @app.post("/api/workbench/reset-lab")
+    def api_wb_reset_lab():  # noqa: ANN202
+        workbench_rules.reset_lab()
+        return jsonify({"ok": True, "message": "实验库已重置，可以重新试一遍。"})
+
+    @app.post("/api/workbench/read-card")
+    def api_wb_read_card():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        workbench_rules.read_card(st, str(payload.get("id", "")))
         saves.save_game(CURRENT_SLOT, st, "自动存档")
-        return jsonify({"ok": ok, "message": msg, "detail": detail, "data": snapshot(st)})
+        return jsonify({"ok": True, "data": snapshot(st)})
+
+    @app.post("/api/events/consult")
+    def api_events_consult():  # noqa: ANN202
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        result = event_rules.consult(st, str(payload.get("id", "")))
+        if result.get("ok"):
+            saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False), "message": result.get("message", ""),
+                        "data": snapshot(st)})
 
     # ---------------- v0.9：主界面 / 跨局档案 / 阶段性述职 ----------------
 
@@ -394,22 +436,18 @@ def create_app() -> Flask:
     def api_menu():  # noqa: ANN202
         kd = tech_rules.knowledge_def()
         prof = saves.get_profile()
-        unlocked = set(prof.get("unlocked_knowledge") or [])
+        read = set(prof.get("player_knowledge") or [])
         items = []
         for kid, it in kd["items"].items():
-            got = kid in unlocked
-            row = {
+            # 知识库是文档，不是奖励：全部条目都完整可读，跨局只记「看过没有」。
+            items.append({
                 "id": kid, "title": it["title"], "field": it.get("field", ""),
                 "field_label": kd["fields"].get(it.get("field", ""), ""),
-                "branch": it.get("branch", ""), "unlocked": got,
+                "branch": it.get("branch", ""), "read": kid in read,
                 "summary": it.get("summary", ""),
-            }
-            if got:
-                row.update({
-                    "body": it.get("body", ""), "in_game": it.get("in_game", ""),
-                    "tell": it.get("tell", ""),
-                })
-            items.append(row)
+                "body": it.get("body", ""), "in_game": it.get("in_game", ""),
+                "tell": it.get("tell", ""),
+            })
         items.sort(key=lambda r: (r["branch"], r["title"]))
         diffs = [
             {"id": k, "label": v["label"], "desc": v["desc"]}
@@ -420,7 +458,7 @@ def create_app() -> Flask:
             "slots": saves.slot_details(),
             "knowledge": items,
             "knowledge_total": len(items),
-            "knowledge_unlocked": len(unlocked),
+            "knowledge_read": len(read),
             "difficulties": diffs,
             "current_slot": CURRENT_SLOT,
             "review_week_range": [50, 100],

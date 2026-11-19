@@ -77,6 +77,9 @@ def _migrate(st: GameState) -> GameState:
 
     v3→v4：行动力从 5 点制扩到 24 点制，科技进度按新刻度保留。
     v4→v5：科技改为随时间推进的时间读条 + 自学精力；精力给一个温和开局值。
+    v6→v7：v1.0 取消读条 / 考核 / 解锁，改为三维（玩家知识 / 角色履历 / 公司资产）。
+           旧档里的 unlocked / exams / progress 字段由 serde 直接忽略，
+           assets / career_rec / entries 用默认值补齐——旧局按新规则继续跑。
     """
     if int(st.meta.save_version) < 4:
         from core.rules import actions as action_rules
@@ -94,6 +97,9 @@ def _migrate(st: GameState) -> GameState:
         st.meta.rules_version = "0.9.0"
         if not (50 <= int(st.meta.review_week) <= 100):
             st.meta.review_week = 60
+    if int(st.meta.save_version) < 7:
+        st.meta.save_version = 7
+        st.meta.rules_version = "1.0.0"
     return st
 
 
@@ -135,8 +141,11 @@ def load_snapshot(snapshot_id: int, path: Path | None = None) -> GameState | Non
 # ---------------- 跨局档案：已解锁知识 / 设置 / 槽位管理 ----------------
 
 DEFAULT_PROFILE = {
-    "unlocked_knowledge": [],   # 跨所有存档读过的知识卡 id
-    "unlocked_tech": [],        # 跨所有存档掌握过的科技节点 id
+    # 玩家知识：跨所有存档永久保留。它是「你学会了什么」，不是角色等级，
+    # 也不授予任何游戏内资格；知识留在玩家自己头脑里。
+    "player_knowledge": [],     # 查阅过的知识卡 id
+    "practiced_tech": [],       # 亲手实验 / 部署过的技术档案 id
+    "solved_incidents": [],     # 解决过的重大事件类型
     "achievements": [],         # 历次评价拿到过的数据成就 id
     "best_rank": "",
     "reviews": 0,
@@ -180,26 +189,33 @@ def set_profile(data: dict, path: Path | None = None) -> dict:
 
 
 def sync_profile(st: GameState, path: Path | None = None) -> dict:
-    """把本局新读到的知识 / 新掌握的科技 / 新拿到的成就并进跨局档案。无变化就不写库。"""
+    """把「玩家本人学会了什么」并进跨局档案。无变化就不写库。
+
+    只同步玩家知识（永久）与成就；角色履历、公司资产属于这一局，不跨局继承。
+    """
     cur = get_profile(path)
-    know = set(cur.get("unlocked_knowledge") or [])
-    tech = set(cur.get("unlocked_tech") or [])
+    know = set(cur.get("player_knowledge") or [])
+    practiced = set(cur.get("practiced_tech") or [])
+    incidents = set(cur.get("solved_incidents") or [])
     ach = set(cur.get("achievements") or [])
-    before = (len(know), len(tech), len(ach))
+    before = (len(know), len(practiced), len(incidents), len(ach))
     for key, ok in (st.tech.knowledge or {}).items():
         if ok:
             know.add(key)
-    for key, ok in (st.tech.unlocked or {}).items():
-        if ok:
-            tech.add(key)
+    for key, e in (st.tech.entries or {}).items():
+        if e.get("experimented") or e.get("deployed"):
+            practiced.add(key)
+    for r in st.career_rec.resolved_events or []:
+        incidents.add(r.get("id", ""))
     for rep in st.review.reports or []:
         for a in rep.get("achievements", []):
             if a.get("earned"):
                 ach.add(a["id"])
-    if (len(know), len(tech), len(ach)) == before:
+    if (len(know), len(practiced), len(incidents), len(ach)) == before:
         return cur
-    cur["unlocked_knowledge"] = sorted(know)
-    cur["unlocked_tech"] = sorted(tech)
+    cur["player_knowledge"] = sorted(know)
+    cur["practiced_tech"] = sorted(practiced)
+    cur["solved_incidents"] = sorted(i for i in incidents if i)
     cur["achievements"] = sorted(ach)
     cur["reviews"] = max(int(cur.get("reviews", 0)), len(st.review.reports or []))
     ranks = ["D", "C", "B", "A", "S"]

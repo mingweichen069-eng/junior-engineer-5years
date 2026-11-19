@@ -101,6 +101,8 @@ def evaluate_peak(state: GameState, catalog: list[dict] | None = None) -> PeakMe
 
     mods = tech_rules.mods(state)
     qt = float(mods.get("query_time", 1.0))
+    # 只有物理上命中该查询的索引才降低它的耗时；建错的索引只留代价。
+    per_query = dict(mods.get("per_query") or {})
 
     base: list[QueryMetric] = []
     for q in active:
@@ -128,7 +130,7 @@ def evaluate_peak(state: GameState, catalog: list[dict] | None = None) -> PeakMe
             id=q["id"],
             name=q["name"],
             qps=qps,
-            time_ms=path.cost.total_ms * qt,
+            time_ms=path.cost.total_ms * float(per_query.get(q["id"], qt)),
             rows=path.cost.rows,
             path=path.kind,
             io_ops=path.cost.io_ops,

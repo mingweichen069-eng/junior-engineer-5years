@@ -54,10 +54,12 @@ def new_game(seed: int = 20261118, difficulty: str = "normal", sandbox: bool = F
     # 每档难度有独立的种子偏移：同一个 seed 在不同难度下不是同一局
     eff_seed = seed + int(cfg["seed_offset"])
     tech = TechState()
-    for node_id in cfg["unlock_tech"]:
-        tech.unlocked[node_id] = True
-    if tech.unlocked:
-        tech.direction = "db"
+    # 难度只影响「接触过什么」，不白送任何能力或数值：
+    # 老手玩家本来就能直接操作，不需要系统先替他解锁。
+    for node_id in cfg.get("unlock_tech", []):
+        tech.entries[node_id] = {
+            "seen": True, "experimented": False, "deployed": False, "incident": False, "weeks": [1]
+        }
     return GameState(
         meta=Meta(seed=eff_seed, week=1, difficulty=difficulty, sandbox=sandbox,
                   review_week=max(50, min(100, int(review_week)))),
@@ -164,12 +166,10 @@ def step(state: GameState) -> PeakMetrics:
     action_rules.reset_ap(state)
     if state.meta.sandbox:
         state.player.ap = 999                    # 沙盘：AP 无限，只做实验
-    # 上周没做的决策，按默认选项结算；上周没交卷的考核也算一次未通过
+    # 上周没做的决策，按默认选项结算。
     event_rules.expire_pending(state)
-    tech_rules.expire_exams(state)
-    # 自学精力回复 + 在读节点随时间推进（不花行动力；精力越高读得越快）。
-    # 上周动作越多，这一周的精力回复被打折得越狠（救火挤掉学习）。
-    tech_rules.tick_study(state)
+    # 调查精力回复（上周动作越多，这周回复越少）；不再推进任何读条或考核。
+    tech_rules.tick_energy(state)
     state.actions.actions_this_week = 0
 
     _grow_data(state)
@@ -178,10 +178,14 @@ def step(state: GameState) -> PeakMetrics:
 
     metrics = evaluate_peak(state)
     impact = event_rules.run_week(state, metrics)
-    if impact.error_add > 0:
-        metrics.error_rate = min(0.99, 1 - (1 - metrics.error_rate) * (1 - min(0.95, impact.error_add)))
-    if impact.p95_add > 0:
-        metrics.p95_ms = max(metrics.p95_ms, impact.p95_add)
+    # 未解决的重大事件：每周持续冲击全局数据，直到玩家真的部署/修复。
+    major = event_rules.tick_major(state)
+    error_add = impact.error_add + float(major.get("error_add", 0.0))
+    if error_add > 0:
+        metrics.error_rate = min(0.99, 1 - (1 - metrics.error_rate) * (1 - min(0.95, error_add)))
+    p95_add = max(impact.p95_add, float(major.get("p95_add", 0.0)))
+    if p95_add > 0:
+        metrics.p95_ms = max(metrics.p95_ms, p95_add)
 
     reliability = max(0.0, 1.0 - 2.0 * metrics.error_rate)
     revenue = economy.weekly_revenue_cents(state, reliability)

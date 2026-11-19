@@ -10,8 +10,8 @@ class Meta:
     seed: int
     week: int = 1
     difficulty: str = "normal"      # easy | normal | hard | veteran
-    rules_version: str = "0.9.0"
-    save_version: int = 6
+    rules_version: str = "1.0.0"
+    save_version: int = 7
     sandbox: bool = False
     # 玩家在开局选的「自动评价周」（50~100）。到点只给参考评价，不结束这一局。
     review_week: int = 60
@@ -94,7 +94,8 @@ class Player:
     name: str = "你"
     level: str = "P4"
     ap: int = 24
-    # 自学精力：每周自动回复，给科技读条加速（越高读得越快），随读条推进被消耗
+    # 调查精力：每周自动回复，用于工作台的实验、查阅资料、技术咨询。
+    # 它不解锁任何东西，只是一项「认知预算」；动作越多，下周回复越少。
     energy: float = 50.0
     # 每周行动力的永久加成（事件给的，比如招到人、拿到预算）
     ap_bonus_event: int = 0
@@ -207,6 +208,9 @@ class EventState:
     pending: list[PendingEvent] = field(default_factory=list)
     # 上一次「真出了事件」的周：用来拉长间隔，避免一周一个弹窗
     last_event_week: int = 0
+    # 正在持续冲击全局数据的重大事件。玩家真正解决（部署/修复）之前，
+    # 每周都按 effects 结算一次；不解决不会自动消失，也没有「考试」可以绕过。
+    active_major: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -240,25 +244,45 @@ class ReviewState:
 
 
 @dataclass
-class TechState:
-    """科技树：点「开始读条」后随时间自动推进（每周一次），不花行动力；
-    推进速度由玩家的自学精力（player.energy）决定。进度满了之后按难度分流：
-    简单模式直接掌握，其余进入考核（失败冷却一周，第二次失败读条清零）。
+class DeployedIndex:
+    """玩家真的部署到生产的一个索引。effective_for 由物理判定填，不由考试填。"""
+    table: str
+    columns: list[str]
+    name: str = ""
+    effective_for: list[str] = field(default_factory=list)
+    week: int = 0
 
-    knowledge 记录读过的知识卡；mastery 是本局选定的专精（与通才互斥）；
-    ap_bonus 是每周行动力的永久加成；active 是正在读条的节点（同时只能有一个）。
+
+@dataclass
+class CompanyAssets:
+    """公司资产：真正部署生效的设施。这是唯一能改变模拟数值的东西。
+
+    玩家「懂」不等于公司「有」。知识留在玩家脑子里，资产留在公司机房里。
     """
-    progress: dict[str, int] = field(default_factory=dict)   # node -> 已完成的学时
-    unlocked: dict[str, bool] = field(default_factory=dict)
-    direction: str = ""              # 当前主攻方向（切换方向要重新解锁）
-    knowledge: dict[str, bool] = field(default_factory=dict)  # 知识卡 id -> 已读
-    mastery: str = ""                # db | backend | sre | perf | ""
-    ap_bonus: int = 0                # 每周行动力加成
-    active: str = ""                 # 正在读条的节点 id（"" 表示没在学）
-    # node -> {"state": "open"|"cool", "week": 开考周, "until": 可重考周, "fails": 次数}
-    exams: dict[str, dict] = field(default_factory=dict)
-    exams_passed: int = 0            # 累计通过的真机考核次数（评价面板的数据成就）
-    exams_failed: int = 0
+    indexes: list[DeployedIndex] = field(default_factory=list)
+    facilities: dict[str, int] = field(default_factory=dict)  # replica / circuit_breaker / cache / monitoring ...
+    rewritten_queries: list[str] = field(default_factory=list)
+    fixes: list[str] = field(default_factory=list)            # 已修复并部署的代码缺陷
+    docs: int = 0
+
+
+@dataclass
+class CareerRecord:
+    """角色履历：这一局实际做过什么、解决过什么、出过什么事故。"""
+    resolved_events: list[dict] = field(default_factory=list)
+    incidents: list[dict] = field(default_factory=list)
+    projects: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TechState:
+    """技术档案（不再是科技树）：只记录玩家接触、实验、部署、出过事故的技术。
+
+    这里没有任何「解锁 / 前置 / 读条 / 考核」状态，也不 gate 任何操作。
+    knowledge 记录玩家查阅过的知识卡（跨局 profile 才会永久保留）。
+    """
+    entries: dict[str, dict] = field(default_factory=dict)    # node_id -> {seen, experimented, deployed, incident, weeks}
+    knowledge: dict[str, bool] = field(default_factory=dict)
 
 
 @dataclass
@@ -279,3 +303,5 @@ class GameState:
     ending: EndingState = field(default_factory=EndingState)
     review: ReviewState = field(default_factory=ReviewState)
     tech: TechState = field(default_factory=TechState)
+    assets: CompanyAssets = field(default_factory=CompanyAssets)
+    career_rec: CareerRecord = field(default_factory=CareerRecord)

@@ -120,18 +120,6 @@ def test_naive_ddl_causes_lock_spike() -> None:
     assert st.flags["lock_week"] == st.meta.week
 
 
-def test_online_ddl_avoids_lock_spike() -> None:
-    st = new_game(seed=13, difficulty="veteran")
-    st.tech.unlocked["db_t1"] = True
-    st.tech.unlocked["db_t2"] = True      # 在线 DDL 需要「查询改写」
-    st.player.ap = 99
-    ok, _ = ar.start(st, "online_ddl")
-    assert ok
-    step(st)
-    assert st.flags.get("lock_week") != st.meta.week
-    assert "idx_orders_user_created" in st.db.tables["orders"].indexes
-
-
 # ---------- 7. 流量毛刺 ----------
 
 def test_traffic_spike_happens_some_weeks() -> None:

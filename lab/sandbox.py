@@ -91,12 +91,16 @@ def used_index(plan: list[tuple]) -> bool:
     return "USING INDEX" in details and "SEARCH" in details
 
 
-def run(sql: str, path: Path | None = None, allow_scan: bool = False) -> dict:
+def run(sql: str, path: Path | None = None, allow_scan: bool = False,
+        prepared: bool = False) -> dict:
+    """prepared=True 表示调用方已经把实验库准备好了，跳过主库的 ensure/重建逻辑。"""
     try:
         text = validate_scan(sql) if allow_scan else validate(sql)
     except SqlError as exc:
         return {"ok": False, "error": str(exc)}
-    db = replica.ensure(path)
+    db = path if prepared else replica.ensure(path)
+    if db is None:
+        return {"ok": False, "error": "没有可用的实验库"}
     if allow_scan:
         conn = sqlite3.connect(db)
     else:

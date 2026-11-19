@@ -28,12 +28,6 @@ def test_action_requires_cash() -> None:
     assert not ok and "现金" in why
 
 
-def test_rewrite_requires_tech() -> None:
-    st = new_game(seed=1)
-    ok, why = action_rules.start(st, "rewrite_dashboard")
-    assert not ok and "科技" in why
-
-
 def test_cache_reduces_database_load() -> None:
     st = new_game(seed=1)
     before = evaluate_peak(st)

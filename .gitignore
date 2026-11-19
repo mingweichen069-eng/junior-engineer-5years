@@ -1,8 +1,15 @@
 # 用户本地存档（私有游戏进度，不上传）
 saves/
 
-# 考核判题副本库（约 44MB，首次运行 SQL 沙箱时由 lab/replica.build() 自动重建）
+# 判题 / 实验副本库（约 44MB，首次运行 SQL 沙箱时由 lab/replica.build() 自动重建）
 lab/replica.db
+
+# v1.0 工程工作台实验库（运行时由 lab/replica.build_lab() 秒级重建，不入库）
+lab/workbench.db
+
+# 存档备份（本地临时文件，不上传）
+saves/*.backup
+saves/*.v*_backup
 
 # 数据库附属文件
 *.db-wal

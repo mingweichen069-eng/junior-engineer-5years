@@ -12,6 +12,7 @@ let panel = "overview";
 let busy = false;
 let eventFilter = "all";
 let actionFilter = "all";
+let knowledgeFilter = "all";
 let snapshots = [];
 let monitorPage = 0;
 const MONITOR_PAGE_SIZE = 5;
@@ -179,7 +180,7 @@ function endingScreen() {
 }
 
 /* =========================================================
-   v0.9 启动主界面：新的游戏 / 加载游戏 / 设置 / 沙盒 / 已解锁知识
+   v1.0 启动主界面：新的游戏 / 加载游戏 / 设置 / 沙盒 / 玩家知识
    ========================================================= */
 
 async function loadMenu() {
@@ -214,7 +215,7 @@ function menuDiffs() {
     { id: "easy", label: "简单", desc: "现金更厚、事故更少" },
     { id: "normal", label: "普通", desc: "设计基准难度" },
     { id: "hard", label: "困难", desc: "事故更密、红线更高" },
-    { id: "veteran", label: "老手", desc: "开局带技能，考核仍要自己写" },
+    { id: "veteran", label: "老手", desc: "开局带技能，问题照样要自己修" },
   ];
 }
 
@@ -228,19 +229,20 @@ function menuHead() {
 
 function splashHome() {
   const slots = (MENU && MENU.slots) || [];
-  const kn = (MENU && MENU.knowledge_unlocked) || 0;
+  const kn = (MENU && MENU.knowledge_read) || 0;
   const kt = (MENU && MENU.knowledge_total) || 0;
   const hasSave = !!S && !(S.ending && S.ending.ended);
   return `<h2>今天也是要上线的一天</h2>
     <p class="splash-lead">自己挑一个述职的时间点（W50~W100）。到点系统会给你一份<b>参考评价</b>，
     列出这局跑出来的数据成就——但没人替你按停止键，你可以一直经营到角色失败为止。
-    大屏参数会随时间漂移，科技也得一个一个读条、一个一个考过去。</p>
+    大屏参数会随时间漂移，线上会冒出躲不掉的问题。学什么、什么时候学，由你自己决定；
+    游戏只负责把后果如实算给你。</p>
     <div class="menu-grid">
       <button class="menu-card" data-menu-view="new"><i>新</i><b>新的游戏</b><span>选难度与结算周</span></button>
       <button class="menu-card" data-menu-view="load"><i>档</i><b>加载游戏</b><span>${slots.length} 个存档槽</span></button>
       <button class="menu-card" data-menu-view="settings"><i>设</i><b>设置</b><span>默认难度 / 时间轴速度</span></button>
       <button class="menu-card" data-menu-view="sandbox"><i>验</i><b>沙盒模式</b><span>AP 无限，不结算</span></button>
-      <button class="menu-card" data-menu-view="knowledge"><i>识</i><b>已解锁知识</b><span>${kn}/${kt} 张卡</span></button>
+      <button class="menu-card" data-menu-view="knowledge"><i>识</i><b>玩家知识</b><span>查阅过 ${kn}/${kt} 张</span></button>
     </div>
     ${hasSave ? `<button class="primary big" data-menu-continue="1">继续这一局 · W${S.week}</button>` : ""}`;
 }
@@ -316,19 +318,17 @@ function splashSettings() {
 
 function splashKnowledge() {
   const items = (MENU && MENU.knowledge) || [];
-  const got = items.filter((x) => x.unlocked).length;
-  return `<h2>已解锁知识 · ${got}/${items.length}</h2>
-    <p class="splash-lead">跨所有存档累积：读过的知识卡会永久留在图鉴里，换一局重开也不会丢。没解锁的只给摘要，不剧透结论。</p>
+  const got = items.filter((x) => x.read).length;
+  return `<h2>玩家知识 · 查阅过 ${got}/${items.length}</h2>
+    <p class="splash-lead">这不是解锁图鉴，是<b>你自己脑子里的东西</b>：跨所有存档永久保留，换一局重开也不会丢。
+    全部条目全文开放、随时可查；游戏不负责教你，只负责把你放进一个不得不用上它们的处境里。</p>
     <div class="know-grid">${items
-      .map((it) => `<div class="know-card ${it.unlocked ? "" : "locked"}">
-        <div class="know-top"><span class="know-field">${esc(it.field_label || it.field || "")}</span><b>${esc(it.title)}</b></div>
-        ${
-          it.unlocked
-            ? `<p>${esc(it.body || "")}</p>
-               ${it.in_game ? `<div class="know-game">游戏里：${esc(it.in_game)}</div>` : ""}
-               ${it.tell ? `<div class="know-tell">${esc(it.tell)}</div>` : ""}`
-            : `<p class="muted">${esc(it.summary || "")}</p><small>未解锁 · 去科技树读对应节点</small>`
-        }
+      .map((it) => `<div class="know-card">
+        <div class="know-top"><span class="know-field">${esc(it.field_label || it.field || "")}</span>
+          <b>${esc(it.title)}</b>${it.read ? '<span class="ktag done">看过</span>' : ""}</div>
+        <p>${esc(it.body || it.summary || "")}</p>
+        ${it.in_game ? `<div class="know-game">游戏里：${esc(it.in_game)}</div>` : ""}
+        ${it.tell ? `<div class="know-tell">${esc(it.tell)}</div>` : ""}
       </div>`)
       .join("")}</div>
     <div class="row-actions"><button data-menu-view="home">返回</button></div>`;
@@ -336,8 +336,8 @@ function splashKnowledge() {
 
 function splashSandbox() {
   return `<h2>沙盒模式</h2>
-    <p class="splash-lead">行动力无限、不结算结局、不触发考核，用来验证参数、查询计划与扩容方案。
-    会单独建一个存档槽，不覆盖你的正式局。</p>
+    <p class="splash-lead">行动力无限、不结算结局，用来验证参数、查询计划与扩容方案。
+    工作台里的实验库和生产部署照样按物理结果算，方便你先试再上。会单独建一个存档槽，不覆盖你的正式局。</p>
     <div class="row-actions"><button class="primary" data-menu-sandbox="1">进入沙盒</button>
       <button data-menu-view="home">返回</button></div>`;
 }
@@ -497,7 +497,7 @@ function openReviewModal(report) {
         <button class="primary" data-review-continue="1">继续游玩，直到角色失败</button>
       </div>
       <p class="muted" style="font-size:12px">这份评价只是参考：不会结束这一局、也不锁定任何内容。
-      之后照样能继续读科技、维护大屏参数、把没拿到的成就补齐。</p>
+      之后照样能继续做实验、维护大屏参数、把没解决的问题修掉。</p>
     </div>
   </div></div>`;
   root.classList.add("open");
@@ -758,23 +758,23 @@ function renderHud() {
           apBonus.tech >= 0 ? "+" : ""
         }${apBonus.tech}，事件 ${apBonus.event >= 0 ? "+" : ""}${apBonus.event}${
           apBonus.temp ? `，临时 ${apBonus.temp > 0 ? "+" : ""}${apBonus.temp}（到 W${apBonus.temp_until}）` : ""
-        }。只用来改系统、救火；科技读条走时间，不占这一池子。`,
+        }。只用来改系统、救火；调查与实验走另一份精力，不占这一池子。`,
       }
     ),
     resItem(
-      "学",
-      "自学精力",
+      "查",
+      "调查精力",
       `<span class="res-val ${S.energy >= 80 ? "ok" : S.energy < 20 ? "warn" : ""}">${S.energy}<span style="font-size:10px;color:var(--dim)"> / ${S.energy_cap || 100}</span></span>
        ${S.energy_penalty ? `<span class="res-delta dn">行动挤占 -${S.energy_penalty}</span>` : ""}
        <div class="apbar ebar"><i style="width:${Math.max(0, Math.min(100, Math.round((S.energy / Math.max(1, S.energy_cap || 100)) * 100)))}%"></i></div>`,
       {
-        tip: `<b>自学精力</b>基础回复 +${S.energy_regen || 12}/周（上限 ${S.energy_cap || 100}），但<b>行动越多、下周回得越少</b>：本周前 2 个动作免费，之后每个 -2 点，动作超过 5 个还会直接烧掉存量精力。本周已执行 <b>${
+        tip: `<b>调查精力</b>是一份认知预算，花在工作台做实验、查资料、找同事咨询上；<b>它不解锁任何东西</b>。
+        基础回复 +${S.energy_regen || 12}/周（上限 ${S.energy_cap || 100}），但<b>行动越多、下周回得越少</b>：
+        本周前 2 个动作免费，之后每个 -2 点，动作超过 5 个还会直接烧掉存量精力。本周已执行 <b>${
           S.actions_this_week || 0
         }</b> 个动作，下周实际回复 <b>+${S.energy_regen_eff != null ? S.energy_regen_eff : S.energy_regen || 12}</b>${
           S.energy_overload ? `、额外消耗 <b>${S.energy_overload}</b>` : ""
-        }。科技读条只走时间，当前精力对应每周 <b>+${S.study_rate || 1}</b> 点学时，每点耗 4 精力。${
-          S.studying ? `<br>当前在读：<b>${esc((S.tech.nodes || []).find((x) => x.id === S.studying)?.name || S.studying)}</b>` : "<br>没在读节点时，精力只回不耗——先攒一周再冲大节点是有回报的。"
-        }`,
+        }。救火和调查抢的是同一份心力。`,
       }
     ),
     resItem("人", "注册用户", `<span class="res-val">${num(S.registered)}</span>`, {
@@ -794,11 +794,12 @@ function renderHud() {
 
   /* 右上角告警徽记 */
   const alerts = [];
-  const openExams = ((S.tech && S.tech.exams) || []).filter((x) => x.state === "open");
+  const majors = S.major_events || [];
+  if (majors.length)
+    alerts.push(["事", "bad", `${majors.length} 起重大事件还在冲击线上数据：去工作台调查并真正解决`, "workbench"]);
   if (S.review_pending) alerts.push(["评", "warn", `W${S.review_week} 阶段性述职已出：点开看这局的数据成就`, "review"]);
   else if (!S.review_done && !S.sandbox && S.review_week - S.week <= 4)
     alerts.push(["期", "warn", `还有 ${Math.max(0, S.review_week - S.week)} 周到自动评价周`, "career"]);
-  if (openExams.length) alerts.push(["考", "warn", `有 ${openExams.length} 个科技考核等交卷：本周内不交算一次未通过`, "tech"]);
   if (!S.team.monitoring) alerts.push(["盲", "warn", "没有开监控：你只能看到聚合 p95，看不到是哪条查询在拖后腿", "actions"]);
   if (m.availability < 99) alerts.push(["可", "bad", "可用性已跌破 99%，继续下去会触发 SLA 赔偿", "monitor"]);
   if (m.p95 > 800) alerts.push(["慢", "bad", "p95 超过 800ms：用户已经在骂了", "monitor"]);
@@ -1125,7 +1126,7 @@ function panelActions() {
     }`;
 }
 
-/* ---------------- 代码编辑器（考核弹窗用） ---------------- */
+/* ---------------- 高亮与编辑器（工作台用） ---------------- */
 
 const SQL_KEYWORDS = /^(SELECT|FROM|WHERE|AND|OR|NOT|ORDER|BY|LIMIT|OFFSET|GROUP|HAVING|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AS|COUNT|SUM|AVG|MIN|MAX|DESC|ASC|CREATE|INDEX|UNIQUE|DATE|BETWEEN|IN|IS|NULL|LIKE|CASE|WHEN|THEN|ELSE|END|EXPLAIN|QUERY|PLAN|INSERT|INTO|VALUES|UPDATE|SET|DELETE|WITH|UNION|ALL|ALTER|TABLE|ADD|ALGORITHM|LOCK|NONE|INPLACE|KEY|HAVING|ROUND|IF)$/i;
 
@@ -1186,518 +1187,351 @@ function bindEditor(box, hl) {
   });
 }
 
-/* ---------------- 科技树（HOI4 式网格） ---------------- */
+/* ---------------- 网格定位 ---------------- */
 
 const TECH_GLYPH = { cs: "基", db: "库", backend: "服", sre: "稳", perf: "性", algo: "算" };
 const TREE = { colW: 210, rowH: 224, nodeW: 190, nodeH: 112, pad: 28, laneW: 88, subGap: 10 };
 const COL_NAME = { 1: "入门", 2: "上手", 3: "进阶", 4: "深水区", 5: "封顶", 6: "终局" };
 
+/* ---------------- 技术档案（不再是科技树） ---------------- */
+
 function techPos(n, minCol) {
-  const sub = n.sub || 0;
-  return {
-    x: TREE.pad + TREE.laneW + (n.col - minCol) * TREE.colW,
-    y: TREE.pad + n.row * TREE.rowH + sub * (TREE.nodeH + TREE.subGap),
-  };
+  const x = 54 + ((n.col || n.tier || 1) - minCol) * 168;
+  const y = 26 + (n.row || 0) * 132 + (n.sub || 0) * 40;
+  return { x, y };
 }
 
+const ARCHIVE_STATE = {
+  untouched: { label: "未接触", cls: "ar0" },
+  seen: { label: "接触过", cls: "ar1" },
+  experimented: { label: "实验过", cls: "ar2" },
+  deployed: { label: "已部署", cls: "ar3" },
+};
+
 function panelTech() {
-  const tech = S.tech || { branches: {}, nodes: [], layout: {} };
-  const branches = Object.entries(tech.branches || {}).sort((a, b) => a[1].row - b[1].row);
-  const minCol = (tech.layout && tech.layout.min_col) || 1;
-  const maxCol = (tech.layout && tech.layout.max_col) || 6;
-  const byId = {};
-  tech.nodes.forEach((n) => (byId[n.id] = n));
-  const W = TREE.pad * 2 + TREE.laneW + (maxCol - minCol) * TREE.colW + TREE.nodeW;
-  const H = TREE.pad * 2 + Math.max(1, branches.length - 1) * TREE.rowH + TREE.nodeH * 2 + TREE.subGap;
+  const t = S.tech || {};
+  const nodes = t.nodes || [];
+  const branches = t.branches || {};
+  const assets = S.assets || { indexes: [], facilities: {}, rewritten_queries: [], fixes: [], docs: 0 };
+  const career = S.career || { resolved_events: [], incidents: [], projects: [] };
+  const minCol = (t.layout || {}).min_col || 1;
+  const maxCol = (t.layout || {}).max_col || 6;
+  const width = 54 + (maxCol - minCol + 1) * 168 + 40;
 
-  const unlocked = tech.nodes.filter((n) => n.unlocked).length;
-  const masteryName = tech.mastery ? (tech.branches[tech.mastery] || {}).name || tech.mastery : "";
-
-  const paths = [];
-  for (const n of tech.nodes) {
-    const p = techPos(n, minCol);
-    const parents = [...(n.requires_all || [])];
-    (n.requires_any || []).forEach((r) => parents.push(r));
-    for (const rid of parents) {
-      const parent = byId[rid];
-      if (!parent) continue;
-      const q = techPos(parent, minCol);
-      const x1 = q.x + TREE.nodeW;
-      const y1 = q.y + TREE.nodeH / 2;
-      const x2 = p.x;
-      const y2 = p.y + TREE.nodeH / 2;
-      const mx = x1 + Math.max(24, (x2 - x1) * 0.45);
-      const cls = n.unlocked && parent.unlocked ? "done" : parent.unlocked ? "live" : "off";
-      const any = (n.requires_any || []).includes(rid) ? " any" : "";
-      paths.push(
-        `<path class="tl ${cls}${any}" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`
-      );
-    }
-  }
-
-  const lanes = branches
-    .map(([id, b]) => {
-      const y = TREE.pad + b.row * TREE.rowH;
-      const total = tech.nodes.filter((n) => n.branch === id).length;
-      const done = tech.nodes.filter((n) => n.branch === id && n.unlocked).length;
-      return `<div class="tlane" style="top:${y}px;height:${TREE.rowH}px;--bc:${b.color}">
-        <div class="tlane-label"><b>${esc(b.name)}</b><small>${done}/${total}</small></div>
+  const lanes = Object.entries(branches)
+    .sort((a, b) => (a[1].row || 0) - (b[1].row || 0))
+    .map(([bid, b]) => {
+      const items = nodes.filter((n) => n.branch === bid);
+      return `<div class="tlane">
+        <div class="tlane-h"><b>${esc(b.name || bid)}</b><small>${esc(b.short || "")}</small></div>
+        <div class="tlane-nodes">${items
+          .map((n) => {
+            const s = ARCHIVE_STATE[n.state] || ARCHIVE_STATE.untouched;
+            return `<div class="tnode3 ${s.cls} ${n.incident ? "incident" : ""}" data-tech-node="${esc(n.id)}">
+              <b>${esc(n.name)}</b>
+              <span class="tnode3-state">${s.label}${n.incident ? " · 出过事故" : ""}</span>
+              <small>${esc((n.desc || "").slice(0, 42))}</small>
+            </div>`;
+          })
+          .join("")}</div>
       </div>`;
     })
     .join("");
 
-  const heads = [];
-  for (let c = minCol; c <= maxCol; c++) {
-    const x = TREE.pad + TREE.laneW + (c - minCol) * TREE.colW;
-    heads.push(
-      `<div class="tcol-head" style="left:${x}px;width:${TREE.nodeW}px">${c} · ${COL_NAME[c] || ""}</div>`
-    );
-  }
+  const assetRows = [
+    ...(assets.indexes || []).map((i) =>
+      `<div class="asset-row"><b>${esc(i.name || "索引")}</b>
+        <span>${esc(i.table)}(${esc((i.columns || []).join(", "))})</span>
+        <em>${(i.effective_for || []).length
+          ? "命中 " + esc((i.effective_for || []).join(", "))
+          : "没帮到任何查询（仍有写放大与磁盘开销）"}</em></div>`
+    ),
+    ...(assets.rewritten_queries || []).map((q) =>
+      `<div class="asset-row"><b>查询改写</b><span>${esc(q)}</span><em>谓词已可索引</em></div>`
+    ),
+    ...Object.entries(assets.facilities || {}).map(([k, v]) =>
+      `<div class="asset-row"><b>${esc(k)}</b><span>×${esc(String(v))}</span><em>已部署</em></div>`
+    ),
+    ...(assets.fixes || []).map((f) =>
+      `<div class="asset-row"><b>代码修复</b><span>${esc(f)}</span><em>回归用例通过</em></div>`
+    ),
+  ];
 
-  const nodeEls = tech.nodes
-    .map((n) => {
-      const p = techPos(n, minCol);
-      const st = n.unlocked
-        ? "done"
-        : n.excluded_by
-        ? "excluded"
-        : !n.req_ok
-        ? "locked"
-        : n.exam_state === "open"
-        ? "ready"
-        : n.cooling
-        ? "cooling"
-        : n.studying
-        ? "studying"
-        : n.progress
-        ? "paused"
-        : "open";
-      const pct = n.ap ? Math.min(100, Math.round((n.progress / n.ap) * 100)) : 0;
-      const color = (tech.branches[n.branch] || {}).color || "#c9a961";
-      const mark = n.unlocked ? "✓" : n.exam_state === "open" ? "考" : n.cooling ? "冷" : "";
-      const foot = n.unlocked
-        ? "已掌握"
-        : n.exam_state === "open"
-        ? "待考核 · 本周交卷"
-        : n.cooling
-        ? `冷却至 W${n.exam_until}`
-        : n.excluded_by
-        ? "路线互斥"
-        : !n.req_ok
-        ? "前置未满足"
-        : n.studying
-        ? `读条 ${n.progress}/${n.ap} · +${n.rate || 1}/周`
-        : n.progress
-        ? `暂停 ${n.progress}/${n.ap}`
-        : n.examined
-        ? "未开始 · 需考核"
-        : "未开始";
-      return `<button class="tnode3 ${st}" style="left:${p.x}px;top:${p.y}px;width:${TREE.nodeW}px;height:${TREE.nodeH}px;--bc:${color}" data-tech-node="${esc(
-        n.id
-      )}">
-        <span class="tn3-top">
-          <span class="tn3-ico">${TECH_GLYPH[n.branch] || "技"}</span>
-          <span class="tn3-name">${esc(n.name)}</span>
-          ${mark ? `<span class="tn3-badge">${mark}</span>` : ""}
-        </span>
-        <span class="tn3-meta">${n.is_mastery ? "专精" : "T" + n.col} · ${n.ap} 学时${
-        n.examined && !tech.exam_enabled ? ' · <b class="pen">免考核</b>' : ""
-      }${n.switch_penalty ? ' · <b class="pen">跨线</b>' : ""}</span>
-        <span class="tn3-bar"><i style="width:${pct}%"></i></span>
-        <span class="tn3-foot">${foot}</span>
-      </button>`;
-    })
-    .join("");
-
-  const exams = (tech.exams || []).filter((x) => x.state === "open");
-  const eset = tech.exam_set || {};
-  return `<div class="page-head"><h2>科技树</h2>
-      <p>六条轨道、${tech.nodes.length} 个节点（新增<b>算法工程</b>）。读条<b>不花行动力</b>：点「开始读条」后每周按自学精力自动推进，精力越高读得越快；读满之后${
-    tech.exam_enabled
-      ? `要交一次真作业才能掌握——<b>${esc(eset.label || "基础题库")}</b>以编码题与真库 SQL 为主，每条专精路线都躲不掉编码考核`
-      : "直接掌握（本难度免考核）"
-  }。${
-    eset.note ? `<span class="muted">${esc(eset.note)}</span>` : ""
-  }专精之间互斥，一局只能选一条。</p></div>
-    ${
-      exams.length
-        ? `<div class="banner info">你有 ${exams.length} 个考核机会待交卷：${exams
-            .map((x) => `<b>${esc(x.name)}</b>`)
-            .join("、")}。本周内不交，算一次未通过。<button data-exam-open="${exams[0].node}">去考核</button></div>`
-        : ""
-    }
-    <div class="tech-toolbar">
-      <span class="tt-item">已掌握 <b>${unlocked}</b><i>/${tech.nodes.length}</i></span>
-      <span class="tt-item">专精 <b>${esc(masteryName || "未选择")}</b></span>
-      <span class="tt-item">在读 <b>${esc(((tech.nodes || []).find((x) => x.id === tech.active) || {}).name || "无")}</b></span>
-      <span class="tt-item">自学精力 <b>${S.energy}</b><i> / ${S.energy_cap || 100}</i> · 每周 +${S.study_rate || 1} 学时</span>
-      <span class="tt-legend">
-        <i class="lg done"></i>已掌握<i class="lg ready"></i>待考核<i class="lg studying"></i>读条中<i class="lg cooling"></i>冷却<i class="lg locked"></i>锁定
-      </span>
+  return `<div class="page-head"><h2>技术档案</h2>
+      <p>这里<b>不解锁任何东西</b>，只记录你接触、实验、部署过什么。
+      <b>知识不是奖励，是工具</b>：没点亮的节点你照样可以直接用，用错了由系统按物理结果算代价。</p></div>
+    <div class="archive-summary">
+      <div class="as-item"><b>${t.deployed || 0}</b><span>已部署</span></div>
+      <div class="as-item"><b>${t.experimented || 0}</b><span>实验过</span></div>
+      <div class="as-item"><b>${t.total || nodes.length}</b><span>档案条目</span></div>
+      <div class="as-note"><b>三个维度不会自动转换</b><br>
+        玩家知识（跨局，留在你脑子里）／角色履历（这局做过什么）／公司资产（真的部署了什么）。<br>
+        你懂 Redis，不代表公司有 Redis 集群。只有「公司资产」会改变模拟数字。</div>
     </div>
-    <div class="tree-viewport"><div class="tree-canvas" style="width:${W}px;height:${H}px">
-      ${lanes}
-      ${heads.join("")}
-      <svg class="tree-links" width="${W}" height="${H}">${paths.join("")}</svg>
-      ${nodeEls}
-    </div></div>
-    <div class="tree-foot">点节点看详情：先「开始读条」，然后推进周数等它自己走满（同时只能读一个，进度会保留）。攒精力能加速，但没法花钱买进度；读满后先交作业，作业写不出来，知识不算你的。</div>`;
+    <section class="card"><h3>公司资产 <span class="right">唯一影响数值的东西</span></h3>
+      ${assetRows.length ? assetRows.join("") : '<div class="muted">还没有部署任何东西。去工作台动手。</div>'}
+      <div class="row-actions" style="margin-top:10px"><button data-goto="workbench">去工作台</button></div>
+    </section>
+    <section class="card"><h3>角色履历</h3>
+      <div class="ins-note">解决过 ${career.resolved_events.length} 起重大事件，留下 ${career.projects.length} 条项目记录。</div>
+      ${(career.projects || []).slice(-6).map((p) => `<div class="hist-line">· ${esc(p)}</div>`).join("")}
+    </section>
+    <div class="archive-grid" style="min-width:${width}px">
+      <div class="tree-canvas">${lanes}</div>
+    </div>`;
 }
 
-function techActionBlock(n) {
-  if (n.unlocked) return `<div class="tm-done">已掌握 · 读条与${n.examined ? "考核" : "时间"}都已完成</div>`;
-  if (n.excluded_by) return `<div class="tm-blocked">与已选路线「${esc(n.excluded_by)}」互斥</div>`;
-  if (!n.req_ok) return `<div class="tm-blocked">前置未满足</div>`;
-  if (n.exam_state === "open") {
-    return `<button class="primary" data-exam-open="${esc(n.id)}">参加考核（本周内交卷）</button>`;
-  }
-  if (n.cooling) {
-    return `<button disabled>考核冷却中 · W${n.exam_until} 可重考</button>`;
-  }
-  if (n.full) {
-    return `<button class="primary" data-exam-open="${esc(n.id)}">领取考核</button>`;
-  }
-  const rate = n.rate || S.study_rate || 1;
-  const eta = Math.ceil((n.remaining || 0) / rate);
-  return `<div class="tm-study">
-    <button class="primary" data-tech-study="${esc(n.id)}">${n.studying ? "暂停读条" : "开始读条"}</button>
-    <span class="tm-study-note">读条不花行动力：按当前<b>${S.energy}</b> 精力每周 <b>+${rate}</b> 点，还差 <b>${n.remaining}</b> 点、约 <b>${eta}</b> 周读满。${
-      n.studying ? "推进周数才会走条。" : "同时只能读一个；暂停后进度保留，精力会继续回复。"
-    }</span>
+/* ---------------- 工程工作台 ---------------- */
+
+let wbSql = "SELECT * FROM orders WHERE user_id = 1 LIMIT 20";
+let wbFixCode = "";
+let wbFixCase = "";
+let wbResult = null;
+
+function majorCard(m) {
+  return `<div class="major-card">
+    <div class="major-h"><span class="major-tag">持续事故</span><b>${esc(m.name)}</b>
+      <small>已挂 ${m.weeks} 周</small></div>
+    <p>${esc(m.stakes)}</p>
+    ${(m.clues || []).length
+      ? `<div class="major-clues">${m.clues.map((c) => `<div>· ${esc(c)}</div>`).join("")}</div>`
+      : ""}
+    <div class="row-actions">
+      <button data-wb-consult="${esc(m.id)}" ${m.has_more_clues ? "" : "disabled"}>
+        找同事聊聊（花精力与预算换一条线索）</button>
+      <button data-goto="workbench">去实验</button>
+    </div>
+    <div class="major-persist">每周持续冲击：p95 +${num(m.persist.p95_add || 0)}ms ·
+      错误率 +${num((m.persist.error_add || 0) * 100, 1)}% · 工单 +${num(m.persist.tickets || 0)}</div>
   </div>`;
+}
+
+function renderWbResult() {
+  if (!wbResult) return "";
+  const d = wbResult.data || {};
+  const plan = d.plan || [];
+  return `<div class="wb-result ${wbResult.ok ? "ok" : "bad"}">
+    <b>${wbResult.ok ? "执行结果" : "没跑通"}</b>
+    ${wbResult.message ? `<p>${esc(wbResult.message)}</p>` : ""}
+    ${plan.length
+      ? `<div class="wb-plan"><span>EXPLAIN QUERY PLAN</span>${plan
+          .map((p) => `<div class="${planClass(p.detail)}">${esc(p.detail)}</div>`)
+          .join("")}</div>`
+      : ""}
+    ${(d.warnings || []).length
+      ? `<div class="wb-warn">${d.warnings.map((w) => `<div>· ${esc(w)}</div>`).join("")}</div>`
+      : ""}
+    ${(d.cases || []).length
+      ? `<div class="wb-cases">${d.cases
+          .map((c) => `<div class="case-row ${c.ok ? "ok" : "bad"}">用例 ${c.i}：期望 ${esc(c.expect)} ｜ 得到 ${esc(c.got)}</div>`)
+          .join("")}</div>`
+      : ""}
+    ${d.row_count != null ? `<div class="muted">返回 ${d.row_count} 行 · ${num(d.elapsed_ms || 0, 1)} ms</div>` : ""}
+  </div>`;
+}
+
+function panelWorkbench() {
+  const majors = S.major_events || [];
+  const slow = S.slow_queries || [];
+  const assets = S.assets || { indexes: [], facilities: {}, rewritten_queries: [], fixes: [] };
+  const cases = S.cases || [];
+  if (!wbFixCase && cases.length) wbFixCase = cases[0].id;
+  const cur = cases.find((c) => c.id === wbFixCase) || cases[0] || {};
+  if (!wbFixCode && cur.starter) wbFixCode = cur.starter;
+
+  return `<div class="page-head"><h2>工程工作台</h2>
+      <p>监控 → 看执行计划 → 在实验库试 → 部署到生产。没有读条、没有考核、没有冷却重考；
+      <b>系统不评分，只按物理结果算收益与代价</b>。</p></div>
+    ${majors.length
+      ? `<section class="card danger"><h3>正在冲击线上的重大事件 <span class="right">${majors.length} 起</span></h3>
+          ${majors.map(majorCard).join("")}</section>`
+      : '<div class="banner info">目前没有未解决的重大事件。继续维护参数，问题会自己找上门。</div>'}
+    <section class="card"><h3>调查：慢查询与索引</h3>
+      <div class="wb-query-grid">${slow
+        .map((q) => `<div class="wb-query">
+          <b>${esc(q.name)}</b><small>${esc(q.id)} · ${esc(q.table)}</small>
+          <div class="wb-qrow"><span>谓词</span><em>${esc(q.predicates)}</em></div>
+          <div class="wb-qrow"><span>排序</span><em>${esc(q.order_by)}</em></div>
+          <div class="wb-qrow"><span>可索引列</span><em>${esc((q.indexable_columns || []).join(", ") || "无")}</em></div>
+          <div class="wb-qrow"><span>已有索引</span><em>${esc((q.helping_indexes || []).join(", ") || "无")}</em></div>
+          <div class="wb-hint">${esc(q.hint)}</div>
+          ${!q.rewritten && q.id === "q_dashboard"
+            ? `<button data-wb-rewrite="${esc(q.id)}">把 DATE() 改成区间条件</button>` : ""}
+        </div>`)
+        .join("")}</div>
+    </section>
+    <section class="card"><h3>SQL 实验库 <span class="right">真实 SQLite · 20 万行副本</span></h3>
+      <p class="ins-note" style="margin-top:0">写 SELECT 看执行计划，写 CREATE INDEX 真的在实验库里建一个再对比。
+      建错了不会拦你，执行计划会如实告诉你没用上。</p>
+      <textarea id="wb-sql" class="wb-code" spellcheck="false" oninput="wbSql=this.value">${esc(wbSql)}</textarea>
+      <div class="row-actions">
+        <button data-wb-run="inspect">看执行计划</button>
+        <button data-wb-run="experiment">在实验库跑</button>
+        <button data-wb-run="deploy" class="primary">部署到生产</button>
+        <button data-wb-run="reset" class="ghost">重置实验库</button>
+      </div>
+      ${renderWbResult()}
+    </section>
+    <section class="card"><h3>代码修复：生产回归用例</h3>
+      <p class="ins-note" style="margin-top:0">这些不是考题，是线上出过问题的分支。写出能跑通全部用例的函数，
+      它就部署到生产；跑不通就继续查。</p>
+      <div class="wb-case-list">${cases
+        .map((c) => `<button data-wb-case="${esc(c.id)}" class="${c.id === wbFixCase ? "active" : ""}">
+          ${c.deployed ? "✓ " : ""}${esc(c.title)}</button>`)
+        .join("")}</div>
+      <div class="wb-brief">${esc(cur.brief || "")}</div>
+      <textarea id="wb-fix" class="wb-code tall" spellcheck="false" oninput="wbFixCode=this.value">${esc(wbFixCode)}</textarea>
+      <div class="row-actions">
+        <button data-wb-fix="1" class="primary">跑回归并部署</button>
+      </div>
+    </section>
+    <section class="card"><h3>公司资产 · 已部署到生产的资产</h3>
+      <div class="ins-note">索引 ${assets.indexes.length} 个 · 查询改写 ${assets.rewritten_queries.length} 条 ·
+      代码修复 ${assets.fixes.length} 个 · 治理设施 ${Object.keys(assets.facilities || {}).length} 类</div>
+      ${(assets.indexes || []).map((i) =>
+        `<div class="asset-row"><b>${esc(i.name)}</b><span>${esc(i.table)}(${esc((i.columns || []).join(","))})</span>
+         <em>${(i.effective_for || []).length ? "物理上帮到 " + esc((i.effective_for || []).join(",")) : "零收益，只有代价"}</em></div>`
+      ).join("")}
+    </section>`;
+}
+
+async function wbFetch(url, body, label) {
+  if (busy) return;
+  setBusy(true);
+  let j;
+  try {
+    j = await post(url, body);
+  } catch (err) {
+    j = { ok: false, message: "请求失败" };
+  }
+  setBusy(false);
+  const st = j.data && (j.data.state || (j.data.week ? j.data : null));
+  if (st) S = st;
+  else await getState();
+  wbResult = {
+    ok: j.ok, message: j.message || (j.ok ? label + "完成" : ""),
+    data: (j.data && j.data.state ? j.data : (j.detail || {})),
+  };
+  render();
+  toast(j.message || (j.ok ? label + "完成" : label + "没跑通"), j.ok ? "ok" : "warn");
+}
+
+async function wbRun(kind) {
+  const ta = el("#wb-sql");
+  if (ta) wbSql = ta.value;
+  if (kind === "inspect") return wbFetch("/api/workbench/inspect", { sql: wbSql }, "查看执行计划");
+  if (kind === "experiment") return wbFetch("/api/workbench/experiment", { sql: wbSql }, "实验");
+  if (kind === "deploy") return wbFetch("/api/workbench/deploy-index", { sql: wbSql }, "部署索引");
+  if (kind === "reset") {
+    wbResult = null;
+    return wbFetch("/api/workbench/reset-lab", {}, "重置实验库");
+  }
+}
+
+async function wbRewrite(query) {
+  return wbFetch("/api/workbench/deploy-rewrite", { query }, "改写查询");
+}
+
+async function wbDeployFix() {
+  const ta = el("#wb-fix");
+  if (ta) wbFixCode = ta.value;
+  return wbFetch("/api/workbench/deploy-fix", { case_id: wbFixCase, code: wbFixCode }, "修复部署");
+}
+
+async function wbConsult(id) {
+  return wbFetch("/api/events/consult", { id }, "咨询");
+}
+
+async function wbReadCard(id) {
+  const j = await post("/api/workbench/read-card", { id });
+  if (j.data) S = j.data;
+  else await getState();
+  render();
+  toast("记下了：这条你看过了，会永久留在跨局档案里。", "ok");
+}
+
+function wbSelectCase(id) {
+  const c = (S.cases || []).find((x) => x.id === id);
+  if (!c) return;
+  wbFixCase = id;
+  wbFixCode = c.starter || "";
+  wbResult = null;
+  render();
 }
 
 function openTechModal(id) {
   const n = (S.tech.nodes || []).find((x) => x.id === id);
   if (!n) return;
   const root = el("#modal-root");
-  if (!root) return;
-  const kmap = {};
-  (S.knowledge || []).forEach((k) => (kmap[k.id] = k));
-  const knows = (n.knowledge || []).map((kid) => kmap[kid]).filter(Boolean);
-  const branch = (S.tech.branches || {})[n.branch] || {};
-  const reqIds = [...(n.requires_all || []), ...(n.requires_any || [])];
-  const reqs = reqIds.map((rid) => {
-    const p = (S.tech.nodes || []).find((x) => x.id === rid);
-    return `<span class="treq ${p && p.unlocked ? "ok" : ""}">${esc(p ? p.name : rid)}</span>`;
-  });
-  const isAny = (n.requires_any || []).length > 0;
-  const pct = n.ap ? Math.min(100, Math.round((n.progress / n.ap) * 100)) : 0;
-  const stateText = n.unlocked
-    ? "已掌握"
-    : n.exam_state === "open"
-    ? "待考核"
-    : n.cooling
-    ? `冷却至 W${n.exam_until}`
-    : n.studying
-    ? `读条中 · +${n.rate || 1}/周`
-    : n.progress
-    ? "暂停（进度保留）"
-    : "未开始";
-
-  const knowHtml = knows.length
-    ? knows
-        .map(
-          (k) => `<div class="tm-know ${k.read ? "read" : ""}">
-            <div class="tm-know-t"><span>${esc(k.field_label)}</span>${k.read ? "已读" : "未解锁全文"}</div>
-            <b>${esc(k.title)}</b>
-            <p>${esc(k.summary)}</p>
-            ${k.read ? `<p class="tm-know-body">${esc(k.body)}</p>` : ""}
-          </div>`
-        )
-        .join("")
-    : '<div class="muted">这个节点没有绑定知识卡。</div>';
-
-  root.innerHTML = `<div class="modal-mask">
-    <div class="modal tech-modal">
-      <button class="modal-x" data-close="1">✕</button>
-      <div class="tm-head" style="--bc:${branch.color || "#c9a961"}">
-        <span class="tm-ico">${TECH_GLYPH[n.branch] || "技"}</span>
-        <div>
-          <div class="tm-branch">${esc(branch.name || n.branch)} · ${n.is_mastery ? "专精" : "第 " + n.col + " 层"}</div>
-          <h3>${esc(n.name)}</h3>
-        </div>
-      </div>
-      <p class="tm-desc">${esc(n.desc)}</p>
-      <div class="tm-stats">
-        <div><label>读条总量</label><b>${n.ap} 学时</b></div>
-        <div><label>已完成</label><b>${n.progress}/${n.ap}</b></div>
-        <div><label>状态</label><b>${stateText}</b></div>
-      </div>
-      <div class="tm-bar"><i style="width:${pct}%"></i></div>
-      ${
-        n.examined
-          ? `<div class="tm-exam-note">${
-              S.tech.exam_enabled
-                ? `读满后需要交一次 <b>${examKindLabel(n.id)}</b> 考核。第一次失败冷却 1 周，第二次失败读条清零。`
-                : "本难度免考核：读满即掌握。"
-            }</div>`
-          : ""
-      }
-      ${n.switch_penalty ? `<div class="tm-note">跨线成本：本方向第一个节点 ×1.4~2.0。学「计算机基础」可以把这个倍数压下来。</div>` : ""}
-      <div class="tm-sec"><div class="tm-sec-t">前置${isAny ? "（任一）" : ""}</div><div class="tm-reqs">${reqs.join("") || '<span class="muted">无</span>'}</div></div>
-      <div class="tm-sec"><div class="tm-sec-t">这个节点教什么</div>${knowHtml}</div>
-      ${n.unlocks_note ? `<div class="tm-unlock">${esc(n.unlocks_note)}</div>` : ""}
-      <div class="tm-actions">${techActionBlock(n)}</div>
-    </div>
-  </div>`;
+  const s = ARCHIVE_STATE[n.state] || ARCHIVE_STATE.untouched;
+  root.innerHTML = `<div class="modal-mask"><div class="modal v3">
+    <button class="modal-x" data-close="1">✕</button>
+    <div class="v3-body">
+      <div class="v3-kicker">技术档案 · ${esc(n.branch)}</div>
+      <h3>${esc(n.name)} <span class="ktag">${s.label}</span></h3>
+      <p class="v3-narr">${esc(n.desc || "")}</p>
+      <div class="exam-hint"><b>这不是解锁项</b><span>你随时可以直接使用这项技术。
+        档案只记录：${n.seen ? "接触过 · " : ""}${n.experimented ? "实验过 · " : ""}${n.deployed ? "已部署" : "尚未部署"}。
+        用错了的后果由系统按物理结果计算，不会挡在门外。</span></div>
+      <div class="v3-actions"><button class="primary" data-goto="workbench">去工作台动手</button>
+        <button data-close="1">关闭</button></div>
+    </div></div></div>`;
   root.classList.add("open");
 }
 
-function examKindLabel(nodeId) {
-  const key = (S.tech.nodes || []).find((x) => x.id === nodeId);
-  return key && key.exam_kind === "number" ? "计算题" : "动手题";
-}
 
-async function techStudy(id) {
-  if (busy) return;
-  setBusy(true);
-  const j = await post("/api/tech/study", { node: id });
-  setBusy(false);
-  toast(j.message, j.ok ? "" : "bad");
-  if (j.data) {
-    S = j.data;
-    closeModal();
-    render();
-    openTechModal(id);
-  }
-}
-
-/* ---------------- 考核弹窗（维多利亚式事件卡 + 代码编辑器） ---------------- */
-
-let examTask = null;
-let examNode = null;
-let examLast = null;
-
-async function openExamModal(nodeId) {
-  if (!nodeId) return;
-  const root = el("#modal-root");
-  if (!root) return;
-  examNode = nodeId;
-  examTask = null;
-  examLast = null;
-  root.innerHTML = `<div class="modal-mask v3-mask"><div class="modal v3 exam-modal"><div class="exam-loading">调取考核题目…</div></div></div>`;
-  root.classList.add("open");
-  let j = null;
-  try {
-    const r = await fetch("/api/tech/exam?node=" + encodeURIComponent(nodeId));
-    j = await r.json();
-  } catch (err) {
-    toast("题目加载失败", "bad");
-    return closeModal();
-  }
-  if (!j || !j.ok) {
-    toast((j && j.message) || "没有这道题", "bad");
-    return closeModal();
-  }
-  examTask = j.data.task || {};
-  renderExamModal(j.data);
-}
-
-function renderExamModal(meta, result) {
-  const root = el("#modal-root");
-  if (!root) return;
-  const t = examTask || {};
-  const n = (S.tech.nodes || []).find((x) => x.id === (meta.node || examNode));
-  const branch = (S.tech.branches || {})[(n && n.branch) || meta.branch] || {};
-  const tag = n && n.branch === "sre" ? "fault" : n && n.branch === "perf" ? "business" : "team";
-  const res = result || examLast;
-  const fails = (n && n.exam_fails) || 0;
-  const kindHint =
-    t.kind === "code"
-      ? "写完整的 Python 函数：判题会真的调用它，把下面每个用例都跑一遍。不能 import，函数执行有步数上限。"
-      : t.kind === "sql"
-      ? "这题会真的在你本地那份 20 万订单的数据库副本上跑一遍，执行计划说了算。"
-      : t.kind === "number"
-      ? "填数值就行，允许一点误差。"
-      : "写出关键语句，判分会检查必须出现的子句。";
-  const setLabel = (meta && meta.exam_set && meta.exam_set.label) || "";
-
-  const verdict = res
-    ? `<div class="exam-verdict ${res.ok ? "ok" : "bad"}">${res.ok ? "✓ " : "✗ "}${esc(
-        res.message || ""
-      )}</div>`
-    : "";
-  const plan = res && res.detail && res.detail.plan && res.detail.plan.length
-    ? `<div class="exam-plan">${res.detail.plan
-        .map((p) => {
-          const c = planClass(p.detail);
-          return `<div class="plan-line ${c.cls}"><span class="badge ${c.cls}">${c.label}</span><code>${esc(
-            p.detail
-          )}</code></div>`;
-        })
-        .join("")}</div>`
-    : "";
-  const warns = res && res.detail && res.detail.warnings && res.detail.warnings.length
-    ? `<div class="exam-warns">${res.detail.warnings
-        .map((w) => `<div>· ${esc(w)}</div>`)
-        .join("")}</div>`
-    : "";
-  const hint = (!res || !res.ok) && t.hint
-    ? `<div class="exam-hint"><b>提示</b><span>${esc(t.hint)}</span></div>`
-    : "";
-  const cooling = !!(n && n.cooling);
-  const afterFail =
-    res && !res.ok
-      ? `<div class="exam-hint"><b>下一步</b><span>${esc(
-          res.detail && res.detail.fails >= 2
-            ? "这是第二次未通过，读条已经清零：回科技树重新研究一遍再来。"
-            : cooling
-            ? `冷却 1 周：第 ${(n && n.exam_until) || S.week + 1} 周可以再来一次，再失败读条清零。`
-            : "改完再交一次；跨周没交卷也算一次未通过。"
-        )}</span></div>`
-      : "";
-  const solution = res && res.ok && res.detail && res.detail.solution
-    ? `<div class="exam-solution"><b>参考解</b><pre>${esc(res.detail.solution)}</pre></div>`
-    : "";
-
-  // 编码题：公开测试用例（输入 → 期望），交卷后逐条展示实际输出
-  const caseRows = (rows) => (rows || [])
-    .map((c) => `<div class="case-row ${c.ok === false ? "bad" : c.ok === true ? "ok" : ""}">
-        <span class="case-i">#${c.i}</span>
-        <code>${esc(c.args != null ? c.args : "")}</code>
-        <span class="case-arrow">→</span>
-        <code>${esc(c.expect != null ? c.expect : "")}</code>
-        ${c.got != null ? `<span class="case-got">得到 ${esc(c.got)}</span>` : ""}
-        ${c.ok === true ? '<span class="case-mark ok">✓</span>' : c.ok === false ? '<span class="case-mark bad">✗</span>' : ""}
-      </div>`)
-    .join("");
-  const publicCases = t.kind === "code" && (t.cases || []).length
-    ? `<div class="exam-cases"><b>公开测试用例</b>${caseRows(
-        (t.cases || []).map((c, i) => ({
-          i: i + 1, args: JSON.stringify(c.args || []), expect: JSON.stringify(c.expect),
-        }))
-      )}</div>`
-    : "";
-  const resultCases = res && res.detail && res.detail.kind === "code" && (res.detail.cases || []).length
-    ? `<div class="exam-cases results"><b>判题结果 ${res.detail.passed || 0}/${res.detail.total || 0}</b>${caseRows(
-        res.detail.cases
-      )}</div>`
-    : "";
-
-  const editor =
-    t.kind === "number"
-      ? `<input id="exam-input" class="exam-number" autocomplete="off" placeholder="填一个数值${t.unit ? "（" + esc(t.unit) + "）" : ""}" value="${esc(
-          (res && res.detail && res.detail.got != null && res.detail.got) || ""
-        )}">`
-      : t.kind === "code"
-      ? `<textarea id="exam-box" class="exam-code" spellcheck="false" autocomplete="off" wrap="off">${esc(
-          (res && res.answer) || t.starter || ""
-        )}</textarea>`
-      : `<div class="editor exam-editor">
-          <pre class="hl" id="exam-hl" aria-hidden="true"></pre>
-          <textarea id="exam-box" spellcheck="false" autocomplete="off">${esc(
-            (res && res.answer) || t.starter || ""
-          )}</textarea>
-        </div>`;
-
-  root.innerHTML = `<div class="modal-mask v3-mask">
-    <div class="modal v3 exam-modal">
-      <button class="modal-x" data-close="1">✕</button>
-      <div class="v3-art ev-art ${tag}">
-        <span class="v3-art-glyph">考</span>
-        <div class="v3-art-cap">${esc(branch.name || "考核")} · 第 ${meta.week || S.week} 周 · ${
-    t.kind === "code" ? "编码判题" : t.kind === "sql" ? "真机判题" : t.kind === "number" ? "计算题" : "配置题"
-  }${setLabel ? " · " + esc(setLabel) : ""}</div>
-      </div>
-      <div class="v3-body">
-        <div class="v3-kicker">考核 · ${esc(t.role || "现场")}</div>
-        <h3>${esc(t.title || meta.name || "考核")}</h3>
-        <p class="v3-narr">${esc(t.brief || "")}</p>
-        <div class="v3-stakes"><b>要求</b> ${esc(t.goal || "")}</div>
-        <div class="exam-meta"><span>已失败 ${fails} 次</span><span>${kindHint}</span></div>
-        ${publicCases}
-        ${editor}
-        <div class="v3-actions">
-          <button class="ghost" data-close="1">稍后再写</button>
-          <button class="primary" id="exam-submit">提交答卷</button>
-        </div>
-        ${verdict}${plan}${warns}${resultCases}${hint}${afterFail}${solution}
-      </div>
-    </div>
-  </div>`;
-  root.classList.add("open");
-  const box = el("#exam-box");
-  const hl = el("#exam-hl");
-  if (box && hl && t.kind !== "code") bindEditor(box, hl);
-}
-
-async function submitExam() {
-  if (!examNode || busy) return;
-  const box = el("#exam-box");
-  const num = el("#exam-input");
-  const answer = box ? box.value : num ? num.value : "";
-  if (!String(answer).trim()) return toast("答卷是空的", "bad");
-  setBusy(true);
-  const j = await post("/api/tech/exam/submit", { node: examNode, answer });
-  setBusy(false);
-  const res = {
-    ok: !!j.ok,
-    message: j.message || "",
-    detail: j.detail || {},
-    answer,
-  };
-  examLast = res;
-  if (j.data) S = j.data;
-  if (j.ok) {
-    toast(j.message, "ok");
-    closeModal();
-    render();
-    return openTechModal(examNode);
-  }
-  toast(j.message, "bad");
-  const meta = { node: examNode, week: S.week };
-  renderExamModal(meta, res);
-}
-
-/* ---------------- 知识库 ---------------- */
-
-let knowledgeFilter = "all";
+let knowledgeQuery = "";
 
 function panelKnowledge() {
   const rows = S.knowledge || [];
   const readN = rows.filter((r) => r.read).length;
-  const masteredN = rows.filter((r) => r.mastered).length;
-  const list = rows.filter((r) =>
-    knowledgeFilter === "all" ? true : knowledgeFilter === "read" ? r.read : !r.read
-  );
+  const q = (knowledgeQuery || "").trim().toLowerCase();
+  const list = rows.filter((r) => {
+    if (knowledgeFilter === "read" && !r.read) return false;
+    if (knowledgeFilter === "unread" && r.read) return false;
+    if (!q) return true;
+    return [r.title, r.summary, r.body, r.in_game, r.tell, r.field_label]
+      .join(" ").toLowerCase().includes(q);
+  });
   const groups = {};
   list.forEach((r) => {
     const key = r.field_label || "其它";
     (groups[key] = groups[key] || []).push(r);
   });
 
-  const card = (r) => `<article class="kcard ${r.read ? "read" : "locked"}">
+  // 全部条目都全文可读：知识库是工程师随手查的文档，不是靠通关发放的奖励。
+  const card = (r) => `<article class="kcard read">
       <div class="kcard-top">
         <span class="kfield">${esc(r.field_label)}</span>
-        ${r.mastered ? '<span class="ktag done">已掌握</span>' : r.read ? '<span class="ktag">已读</span>' : '<span class="ktag off">未解锁</span>'}
+        <span class="ktag ${r.read ? "done" : ""}">${r.read ? "查阅过" : "可查阅"}</span>
       </div>
       <h4>${esc(r.title)}</h4>
       <p class="ksum">${esc(r.summary)}</p>
-      ${
-        r.read
-          ? `<div class="kbody">${esc(r.body)}</div>
-             <div class="krow"><b>在游戏里</b><span>${esc(r.in_game)}</span></div>
-             <div class="krow tell"><b>怎么判断</b><span>${esc(r.tell)}</span></div>`
-          : `<div class="klock">去科技树研究「${esc(nodeName(r.node))}」解锁全文</div>`
-      }
+      <div class="kbody">${esc(r.body)}</div>
+      <div class="krow"><b>在游戏里</b><span>${esc(r.in_game)}</span></div>
+      <div class="krow tell"><b>怎么判断</b><span>${esc(r.tell)}</span></div>
+      <div class="row-actions"><button data-wb-read="${esc(r.id)}">记一笔「看过了」</button></div>
     </article>`;
 
-  return `<div class="page-head"><h2>知识库</h2>
-      <p>你读过的每一条，都会在科技树上变成一次真实的机制修正。没读过的只给标题和摘要——先自己去学。</p></div>
+  return `<div class="page-head"><h2>内部知识库</h2>
+      <p><b>知识不是奖励，是工具</b>。全部 ${rows.length} 条全文开放、随时可搜，不需要先解锁任何节点。
+      它的价值是帮你解释你在监控里看到的现象。读过的内容会永久留在跨局档案里。</p></div>
     <div class="know-bar">
-      <div class="know-stats"><span>已读 <b>${readN}</b> / ${rows.length}</span><span>已掌握 <b>${masteredN}</b></span></div>
+      <div class="know-stats"><span>查阅过 <b>${readN}</b> / ${rows.length}</span><span>全文开放 <b>${rows.length}</b></span></div>
+      <input id="know-search" class="know-search" placeholder="搜标题 / 正文 / 现象，例如 索引、IO、雪崩"
+        value="${esc(knowledgeQuery)}" onchange="knowledgeQuery=this.value; render()">
       <div class="know-filter">
         ${[
           ["all", "全部"],
-          ["read", "已读"],
-          ["unread", "未读"],
+          ["read", "查阅过"],
+          ["unread", "没看过"],
         ]
           .map(
             ([k, label]) =>
               `<button data-knowledge-filter="${k}" class="${knowledgeFilter === k ? "active" : ""}">${label}</button>`
           )
           .join("")}
+        <button data-know-search="1">搜索</button>
       </div>
     </div>
     ${
@@ -1705,12 +1539,12 @@ function panelKnowledge() {
         ? Object.entries(groups)
             .map(
               ([field, items]) => `<section class="kgroup">
-                <div class="kgroup-head"><b>${esc(field)}</b><span>${items.filter((x) => x.read).length}/${items.length}</span></div>
+                <div class="kgroup-head"><b>${esc(field)}</b><span>${items.filter((x) => x.read).length}/${items.length} 查阅过</span></div>
                 <div class="kgrid">${items.map(card).join("")}</div>
               </section>`
             )
             .join("")
-        : '<div class="banner">这里还没有内容。去科技树研究节点，读过资料后知识会自动进库。</div>'
+        : '<div class="banner">没有匹配的条目，换个词试试。</div>'
     }`;
 }
 
@@ -1789,12 +1623,14 @@ function panelCareer() {
               <button class="primary" data-review-open="1">查看完整报告</button>
             </div>
             <div class="muted" style="font-size:12px">已结算 ${S.review_count || 1} 次 ·
-              真机考核通过 ${(S.tech && S.tech.exams_passed) || 0} 次 / 未通过 ${(S.tech && S.tech.exams_failed) || 0} 次${
+              公司资产 ${((S.assets && S.assets.indexes) || []).length} 个索引 /
+              ${Object.keys((S.assets && S.assets.facilities) || {}).length} 类设施 ·
+              解决重大事件 ${((S.career && S.career.resolved_events) || []).length} 起${
                 S.review_continued ? " · 已选择继续游玩" : ""
               }</div>`
           : `<div class="muted" style="font-size:12px">还没到自动评价周，还有 ${Math.max(
               0, (S.review_week || 60) - S.week
-            )} 周。这段时间里把大屏参数养住、把科技读条排好，成就才会好看。</div>`
+            )} 周。把大屏参数养住、把线上问题真的修掉，成就才好看。</div>`
       }
       <div class="row-actions" style="margin-top:8px"><button data-review-config="1">调整评价周（50~100）</button></div>
       ${
@@ -1929,6 +1765,7 @@ const PANELS = {
   monitor: panelMonitor,
   actions: panelActions,
   tech: panelTech,
+  workbench: panelWorkbench,
   knowledge: panelKnowledge,
   docs: panelDocs,
   career: panelCareer,
@@ -2226,7 +2063,7 @@ function openNewGameModal() {
     ["easy", "简单", "现金 75 万 · 事故更少 · 评审线更低", "第一次玩"],
     ["normal", "普通", "现金 50 万 · 设计基准", "推荐"],
     ["hard", "困难", "现金 35 万 · 事故更密 · 红线更高", "每步都要算成本"],
-    ["veteran", "老手", "SQL 55 起步 + 直接解锁 db_t1", "考核仍要自己过"],
+    ["veteran", "老手", "SQL 55 起步", "问题照样要自己修"],
   ];
   root.innerHTML = `<div class="modal-mask">
     <div class="modal">
@@ -2315,7 +2152,7 @@ function bindTips(root) {
 function bind() {
   /* 统一事件委托：中间舞台、右侧检视栏、顶部 HUD、底部时间轴、弹窗都在 document 上处理。
      上一版把监听挂在 #center 上，于是检视栏里的「这一环能做的事」和弹窗里的
-     研究/考核按钮全部点不动——因为它们的 DOM 不在 #center 里。 */
+     面板里的按钮全部点不动——因为它们的 DOM 不在 #center 里。 */
   document.addEventListener("click", (e) => {
     const pick = (sel) => e.target.closest(sel);
 
@@ -2376,14 +2213,25 @@ function bind() {
       return advance(mode === "4" ? 4 : 1);
     }
 
-    /* --- 科技与考核 --- */
-    const examOpen = pick("[data-exam-open]");
-    if (examOpen) return openExamModal(examOpen.dataset.examOpen);
-    if (e.target.id === "exam-submit") return submitExam();
-    const ts = pick("button[data-tech-study]");
-    if (ts) return techStudy(ts.dataset.techStudy);
-    const tnode = pick("button[data-tech-node]");
+    /* --- 技术档案与工程工作台 --- */
+    const tnode = pick("[data-tech-node]");
     if (tnode) return openTechModal(tnode.dataset.techNode);
+    const wrun = pick("button[data-wb-run]");
+    if (wrun) return wbRun(wrun.dataset.wbRun);
+    const wrw = pick("button[data-wb-rewrite]");
+    if (wrw) return wbRewrite(wrw.dataset.wbRewrite);
+    if (pick("button[data-wb-fix]")) return wbDeployFix();
+    const wcase = pick("button[data-wb-case]");
+    if (wcase) return wbSelectCase(wcase.dataset.wbCase);
+    const wcon = pick("button[data-wb-consult]");
+    if (wcon) return wbConsult(wcon.dataset.wbConsult);
+    const wread = pick("button[data-wb-read]");
+    if (wread) return wbReadCard(wread.dataset.wbRead);
+    if (pick("button[data-know-search]")) {
+      const box = el("#know-search");
+      if (box) knowledgeQuery = box.value;
+      return render();
+    }
 
     /* --- 决策事件 --- */
     const ch = pick("button[data-choice]");
@@ -2484,9 +2332,9 @@ function bind() {
         return;
       }
     }
-    const idx = "1234567".indexOf(e.key);
+    const idx = "12345678".indexOf(e.key);
     if (idx >= 0) {
-      const order = ["overview", "monitor", "actions", "tech", "knowledge", "docs", "career"];
+      const order = ["overview", "monitor", "actions", "tech", "workbench", "knowledge", "docs", "career"];
       panel = order[idx];
       history.replaceState(null, "", "#" + panel);
       render();
@@ -2508,18 +2356,11 @@ function bind() {
 (async function main() {
   bind();
   const raw = location.hash.replace("#", "");
-  // 深链：#tech/exam/<node> 直接打开考核（复盘、分享、截图都用得上）
-  const deep = raw.match(/^tech\/exam\/([A-Za-z0-9_]+)$/);
-  const fromHash = deep ? "tech" : raw;
-  if (PANELS[fromHash]) panel = fromHash;
+  if (PANELS[raw]) panel = raw;
   await getState();
   await loadSnapshots();
   await loadMenu();
   render();
-  if (deep) {
-    openExamModal(deep[1]);
-    return;
-  }
   // v0.9：默认先给启动主界面，玩家自己选新游戏 / 加载 / 沙盒 / 继续
   renderSplash("home");
 })();

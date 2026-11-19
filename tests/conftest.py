@@ -1,3 +1,9 @@
+"""测试夹具。
+
+V1.0 起没有读条 / 考核 / 解锁。旧夹具名保留，但语义改成
+「把这项技术真的部署成公司资产」——因为数值修正现在只读资产。
+"""
+
 from __future__ import annotations
 
 import sys
@@ -22,53 +28,43 @@ def client(tmp_path, monkeypatch):
     return app.test_client()
 
 
-def finish_study(st, node_id: str, max_ticks: int = 40):
-    """测试捷径：开始读条，然后靠每周 tick 把条走满（不花 AP、不改行动力）。"""
-    from core.rules import tech
+def deploy(st, node_id: str, max_ticks: int = 40):
+    """测试捷径：把节点对应的设施直接部署到公司资产（等价于玩家在工作台动手）。"""
+    from core.rules import workbench
 
-    node = tech.node_def(tech.load(), node_id)
-    ok, msg = tech.toggle_study(st, node_id)
-    assert ok, msg
-    cost = tech.study_cost(st, node)
-    for _ in range(max_ticks):
-        tech.tick_study(st)
-        if (
-            st.tech.unlocked.get(node_id)
-            or st.tech.exams.get(node_id)
-            or int(st.tech.progress.get(node_id, 0)) >= cost
-        ):
-            break
-    return st.tech.progress.get(node_id, 0)
+    if node_id == "db_t2":
+        workbench.deploy_rewrite(st, "q_dashboard")
+        workbench.deploy_index(st, "CREATE INDEX ix_t2 ON orders(created_at)")
+    elif node_id in ("db_replica", "db_read_replica"):
+        st.assets.facilities["replica"] = st.assets.facilities.get("replica", 0) + 1
+        st.app.read_replicas = min(3, st.app.read_replicas + 1)
+    elif node_id in ("be_api", "circuit_breaker"):
+        st.assets.facilities["circuit_breaker"] = 1
+    elif node_id in ("be_cache", "cache"):
+        st.assets.facilities["cache"] = 1
+    else:
+        workbench.deploy_index(st, "CREATE INDEX ix_fixture ON orders(user_id, created_at)")
+    workbench.mark(st, node_id, "deployed")
+    return True
+
+
+def finish_study(st, node_id: str, max_ticks: int = 40):
+    """兼容旧名：V1.0 里「读满」等价于「已部署」。"""
+    deploy(st, node_id)
+    return 1
 
 
 def finish_msg(st, node_id: str):
-    """返回 (ok, 文案)，文案里带「考核」或「已掌握」，供断言用。"""
-    from core.rules import tech
-
-    ok, msg = tech.toggle_study(st, node_id)
-    assert ok, msg
-    last = ""
-    for _ in range(60):
-        last = " ".join(tech.tick_study(st))
-        if st.tech.unlocked.get(node_id) or st.tech.exams.get(node_id):
-            break
-    return True, last or "读条完成"
+    deploy(st, node_id)
+    return True, "已部署到生产"
 
 
 def pass_exam(st, node_id: str, weeks: int = 0):
-    """测试捷径：把读条走满 + 用题库里的参考解通过考核。"""
-    from core.rules import exam as exam_rules
-    from core.rules import tech
-
-    node = tech.node_def(tech.load(), node_id)
-    st.tech.unlocked.update({r: True for r in node.get("requires_all", [])})
-    finish_study(st, node_id)
+    """兼容旧名：V1.0 没有考试，用「真的部署」替代。"""
+    deploy(st, node_id)
     for _ in range(weeks):
         st.meta.week += 1
-    task = exam_rules.task_for(node, st)
-    if task is None:
-        return True, "免考核"
-    return tech.submit_exam(st, node_id, task.get("solution", ""))[:2]
+    return True, "已部署到生产"
 
 
 @pytest.fixture()

@@ -91,35 +91,6 @@ def test_bankrupt_requires_cash_crisis() -> None:
 
 # ---------- 4. 技能会成长，网页也有难度选择 ----------
 
-def test_exam_unlocks_query_rewrite(study_finish) -> None:
-    """科技不再是「刷技能」，而是读条 + 真的交一次作业。"""
-    from core.rules import exam as exam_rules
-    from core.rules import tech
-
-    st = new_game(seed=14)
-    ok, why = action_rules.start(st, "rewrite_dashboard")
-    assert not ok and "科技" in why
-
-    st.tech.unlocked["db_t1"] = True
-    node = tech.node_def(tech.load(), "db_t2")
-    ok, msg = study_finish(st, "db_t2")
-    assert ok and "考核" in msg
-    assert st.tech.exams["db_t2"]["state"] == "open"
-
-    # 交白卷 → 未通过 + 进入冷却
-    ok, msg, detail = tech.submit_exam(st, "db_t2", "SELECT 1")
-    assert not ok and detail["plan"] is not None
-    assert st.tech.exams["db_t2"]["state"] == "cool"
-
-    st.meta.week += 1
-    ok, msg, _ = tech.submit_exam(st, "db_t2", exam_rules.solution(node, st))
-    assert ok, msg
-    assert st.tech.unlocked.get("db_t2")
-
-    ok, why = action_rules.start(st, "rewrite_dashboard")
-    assert ok, why
-
-
 def test_web_new_game_accepts_difficulty(client) -> None:
     j = client.post("/api/new", json={"difficulty": "veteran"}).get_json()
     assert j["ok"] and j["data"]["difficulty"] == "veteran"

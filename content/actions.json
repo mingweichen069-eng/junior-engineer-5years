@@ -11,7 +11,10 @@
         "type": "add_index",
         "table": "orders",
         "name": "idx_orders_user_created",
-        "columns": ["user_id", "created_at"]
+        "columns": [
+          "user_id",
+          "created_at"
+        ]
       },
       {
         "type": "resolve_debt",
@@ -22,17 +25,19 @@
   {
     "id": "online_ddl",
     "name": "用在线 DDL 加同一个索引（不锁写）",
-    "desc": "ALGORITHM=INPLACE + LOCK=NONE：多花行动力，换掉那一次锁写尖峰。需要科技「查询改写」。",
+    "desc": "ALGORITHM=INPLACE + LOCK=NONE：多花行动力，换掉那一次锁写尖峰",
     "ap": 10,
     "cash_cents": 0,
     "weeks": 1,
-    "requires": { "tech": ["db_t2"] },
     "effects": [
       {
         "type": "add_index_online",
         "table": "orders",
         "name": "idx_orders_user_created",
-        "columns": ["user_id", "created_at"]
+        "columns": [
+          "user_id",
+          "created_at"
+        ]
       },
       {
         "type": "resolve_debt",
@@ -48,7 +53,12 @@
     "cash_cents": 0,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "vacuum_index", "table": "orders" }]
+    "effects": [
+      {
+        "type": "vacuum_index",
+        "table": "orders"
+      }
+    ]
   },
   {
     "id": "archive_orders",
@@ -59,8 +69,13 @@
     "weeks": 1,
     "repeatable": true,
     "effects": [
-      { "type": "archive_orders" },
-      { "type": "resolve_debt", "debt_id": "report_demand" }
+      {
+        "type": "archive_orders"
+      },
+      {
+        "type": "resolve_debt",
+        "debt_id": "report_demand"
+      }
     ]
   },
   {
@@ -71,7 +86,11 @@
     "cash_cents": 0,
     "weeks": 0,
     "effects": [
-      { "type": "enable_cache", "query_id": "q_dashboard", "ttl_s": 30 },
+      {
+        "type": "enable_cache",
+        "query_id": "q_dashboard",
+        "ttl_s": 30
+      },
       {
         "type": "spawn_debt",
         "debt_id": "cache_invalidation",
@@ -90,7 +109,12 @@
     "cash_cents": 0,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "resolve_debt", "debt_id": "cache_invalidation" }]
+    "effects": [
+      {
+        "type": "resolve_debt",
+        "debt_id": "cache_invalidation"
+      }
+    ]
   },
   {
     "id": "open_monitoring",
@@ -99,7 +123,15 @@
     "ap": 3,
     "cash_cents": 30000,
     "weeks": 1,
-    "effects": [{ "type": "monitoring" }, { "type": "resolve_debt", "debt_id": "no_monitoring" }]
+    "effects": [
+      {
+        "type": "monitoring"
+      },
+      {
+        "type": "resolve_debt",
+        "debt_id": "no_monitoring"
+      }
+    ]
   },
   {
     "id": "db_upgrade",
@@ -109,7 +141,13 @@
     "cash_cents": 300000,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "db_upgrade", "buffer_gb": 4, "max_connections": 100 }]
+    "effects": [
+      {
+        "type": "db_upgrade",
+        "buffer_gb": 4,
+        "max_connections": 100
+      }
+    ]
   },
   {
     "id": "expand_disk",
@@ -119,7 +157,13 @@
     "cash_cents": 250000,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "expand_disk", "capacity_gb": 200, "iops": 4000 }]
+    "effects": [
+      {
+        "type": "expand_disk",
+        "capacity_gb": 200,
+        "iops": 4000
+      }
+    ]
   },
   {
     "id": "pool_60",
@@ -129,7 +173,12 @@
     "cash_cents": 0,
     "weeks": 0,
     "repeatable": true,
-    "effects": [{ "type": "add_pool", "delta": 20 }]
+    "effects": [
+      {
+        "type": "add_pool",
+        "delta": 20
+      }
+    ]
   },
   {
     "id": "add_server",
@@ -140,7 +189,10 @@
     "weeks": 0,
     "repeatable": true,
     "effects": [
-      { "type": "add_servers", "count": 1 },
+      {
+        "type": "add_servers",
+        "count": 1
+      },
       {
         "type": "spawn_debt",
         "debt_id": "server_sprawl",
@@ -159,7 +211,11 @@
     "cash_cents": 0,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "consolidate_servers" }]
+    "effects": [
+      {
+        "type": "consolidate_servers"
+      }
+    ]
   },
   {
     "id": "add_read_replica",
@@ -169,9 +225,10 @@
     "cash_cents": 200000,
     "weeks": 1,
     "repeatable": true,
-    "requires": { "tech": ["db_replica"] },
     "effects": [
-      { "type": "add_replica" },
+      {
+        "type": "add_replica"
+      },
       {
         "type": "spawn_debt",
         "debt_id": "replica_lag",
@@ -185,12 +242,19 @@
   {
     "id": "circuit_breaker",
     "name": "加限流与熔断",
-    "desc": "流量突增时保住核心链路：错误率从雪崩变成有损拒绝。需要科技「服务治理」。",
+    "desc": "流量突增时保住核心链路：错误率从雪崩变成有损拒绝",
     "ap": 8,
     "cash_cents": 0,
     "weeks": 1,
-    "requires": { "tech": ["be_api"] },
-    "effects": [{ "type": "circuit_breaker" }, { "type": "trust", "value": 2 }]
+    "effects": [
+      {
+        "type": "circuit_breaker"
+      },
+      {
+        "type": "trust",
+        "value": 2
+      }
+    ]
   },
   {
     "id": "backup_daily",
@@ -199,7 +263,11 @@
     "ap": 4,
     "cash_cents": 20000,
     "weeks": 1,
-    "effects": [{ "type": "backup" }]
+    "effects": [
+      {
+        "type": "backup"
+      }
+    ]
   },
   {
     "id": "write_docs",
@@ -209,31 +277,44 @@
     "cash_cents": 0,
     "weeks": 1,
     "repeatable": true,
-    "effects": [{ "type": "docs" }]
+    "effects": [
+      {
+        "type": "docs"
+      }
+    ]
   },
   {
     "id": "rewrite_dashboard",
     "name": "改写大屏 SQL 为区间查询",
-    "desc": "把 DATE(created_at)=CURDATE() 改成范围条件，回源立刻走索引。需要科技「查询改写」。",
+    "desc": "把 DATE(created_at)=CURDATE() 改成范围条件，回源立刻走索引",
     "ap": 6,
     "cash_cents": 0,
     "weeks": 0,
-    "requires": { "tech": ["db_t2"] },
     "effects": [
-      { "type": "rewrite_query", "query_id": "q_dashboard" },
-      { "type": "resolve_debt", "debt_id": "nonsargable_daily_report" }
+      {
+        "type": "rewrite_query",
+        "query_id": "q_dashboard"
+      },
+      {
+        "type": "resolve_debt",
+        "debt_id": "nonsargable_daily_report"
+      }
     ]
   },
   {
     "id": "rewrite_pending",
     "name": "优化待处理订单查询",
-    "desc": "给「待处理订单」配上合适索引，还掉 schema 漂移债。需要科技「索引与执行计划」。",
+    "desc": "给「待处理订单」配上合适索引，还掉 schema 漂移债",
     "ap": 5,
     "cash_cents": 0,
     "weeks": 1,
     "repeatable": true,
-    "requires": { "tech": ["db_t1"] },
-    "effects": [{ "type": "resolve_debt", "debt_id": "schema_drift" }]
+    "effects": [
+      {
+        "type": "resolve_debt",
+        "debt_id": "schema_drift"
+      }
+    ]
   },
   {
     "id": "automate_ops",
@@ -242,6 +323,11 @@
     "ap": 12,
     "cash_cents": 50000,
     "weeks": 2,
-    "effects": [{ "type": "ap_bonus", "value": 4 }]
+    "effects": [
+      {
+        "type": "ap_bonus",
+        "value": 4
+      }
+    ]
   }
 ]

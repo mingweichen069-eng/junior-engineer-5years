@@ -16,8 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.engine import new_game, step  # noqa: E402
 from core.rules import actions as action_rules  # noqa: E402
-from core.rules import exam as exam_rules  # noqa: E402
-from core.rules import tech as tech_rules  # noqa: E402
+from core.rules import workbench as workbench_rules  # noqa: E402
 
 CATALOG = action_rules.load_actions()
 
@@ -45,21 +44,17 @@ def s_scale(st, week: int) -> None:
         try_act(st, "add_server")
 
 
-def pass_exam(st, node_id: str) -> None:
-    """模拟一个会做题的玩家：每周读条，走满后用参考解交卷。"""
-    node = tech_rules.node_def(tech_rules.load(), node_id)
-    tech_rules.toggle_study(st, node_id)
-    cost = tech_rules.study_cost(st, node)
-    for _ in range(40):
-        if int(st.tech.progress.get(node_id, 0)) >= cost:
-            break
-        tech_rules.tick_study(st)
-    if node.get("exam"):
-        tech_rules.submit_exam(st, node_id, exam_rules.solution(node, st))
+def deploy(st, node_id: str) -> None:
+    """模拟一个真的会动手的玩家：在工作台把技术部署成公司资产。"""
+    if node_id == "db_t2":
+        workbench_rules.deploy_rewrite(st, "q_dashboard")
+        workbench_rules.deploy_index(st, "CREATE INDEX ix_bal_created ON orders(created_at)")
+    else:
+        workbench_rules.deploy_index(st, "CREATE INDEX ix_bal_user ON orders(user_id, created_at)")
 
 
 def s_balanced(st, week: int) -> None:
-    """均衡线：监控→缓存→索引→读条+考核→改写→运维债→扩容。"""
+    """均衡线：监控→缓存→索引→工作台实验与部署→改写→运维债→扩容。"""
     plan = {
         1: "open_monitoring",
         2: "cache_dashboard",
@@ -69,10 +64,10 @@ def s_balanced(st, week: int) -> None:
         10: "backup_daily",
         11: "write_docs",
     }
-    # 科技树流程（读条 + 考核）
+    # v1.0：没有读条与考核，改成「真的把索引 / 查询改写部署到生产」
     if week == 5:
-        pass_exam(st, "db_t1")
-        pass_exam(st, "db_t2")
+        deploy(st, "db_t1")
+        deploy(st, "db_t2")
     if week in plan:
         try_act(st, plan[week])
     if week in (9, 11, 13) and st.company.cash_cents > 0:

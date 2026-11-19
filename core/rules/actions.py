@@ -51,11 +51,10 @@ def is_repeatable(action: dict) -> bool:
 
 
 def ap_cap(state: GameState) -> int:
-    """本周行动力上限 = 难度基数 + 科技加成 + 事件永久加成 + 事件临时加成。"""
+    """本周行动力上限 = 难度基数 + 事件永久加成 + 事件临时加成（不再有「学会科技加 AP」）。"""
     from core.rules import difficulty as difficulty_rules
 
     cap = int(difficulty_rules.get(state).get("ap_base", 24))
-    cap += int(state.tech.ap_bonus)
     cap += int(state.player.ap_bonus_event)
     if state.player.ap_temp_until and state.meta.week <= state.player.ap_temp_until:
         cap += int(state.player.ap_temp_bonus)
@@ -85,12 +84,8 @@ def check(state: GameState, action: dict) -> tuple[bool, str]:
         have = state.player.skills.get(skill, 0.0)
         if have < need:
             return False, f"{skill} 技能不足（需要 {need}，当前 {have:.0f}）"
-    for tech_id in (action.get("requires", {}) or {}).get("tech", []):
-        if not state.tech.unlocked.get(tech_id):
-            from core.rules import tech as tech_rules
-
-            node = tech_rules.node_def(tech_rules.load(), tech_id)
-            return False, f"需要先掌握科技「{node['name'] if node else tech_id}」（见「科技」面板）"
+    # V1.0：不再有任何「需要先学会某科技」的门槛。
+    # 玩家随时可以直接尝试；做错了由系统按物理结果算代价，而不是被挡在门外。
     return True, ""
 
 
@@ -142,7 +137,48 @@ def apply_due(state: GameState) -> list[str]:
     return applied
 
 
+def _sync_assets(state: GameState, effect: dict) -> None:
+    """任何部署类动作都同步登记到公司资产。
+
+    数值修正只读资产，不读「角色学会了什么」；这条同步让快捷行动与工作台部署走同一套物理。
+    """
+    from core.model.state import DeployedIndex
+    from core.rules import workbench
+
+    kind = effect["type"]
+    if kind in ("add_index", "add_index_online"):
+        name, table = effect["name"], effect["table"]
+        cols = list(effect["columns"])
+        if not any(i.name == name for i in state.assets.indexes):
+            state.assets.indexes.append(DeployedIndex(
+                table=table, columns=cols, name=name,
+                effective_for=workbench.effective_for(state, table, cols),
+                week=state.meta.week,
+            ))
+        workbench.mark(state, "db_t1", "deployed")
+    elif kind == "rewrite_query":
+        qid = effect["query_id"]
+        if qid not in state.assets.rewritten_queries:
+            state.assets.rewritten_queries.append(qid)
+        for di in state.assets.indexes:
+            di.effective_for = workbench.effective_for(state, di.table, di.columns)
+        workbench.mark(state, "db_t2", "deployed")
+    elif kind == "add_replica":
+        state.assets.facilities["replica"] = state.assets.facilities.get("replica", 0) + 1
+        workbench.mark(state, "db_replica", "deployed")
+    elif kind == "circuit_breaker":
+        state.assets.facilities["circuit_breaker"] = 1
+        workbench.mark(state, "be_api", "deployed")
+    elif kind == "enable_cache":
+        state.assets.facilities["cache"] = 1
+    elif kind == "monitoring":
+        state.assets.facilities["monitoring"] = 1
+    elif kind == "docs":
+        state.assets.docs += 1
+
+
 def _apply_effect(state: GameState, effect: dict) -> None:
+    _sync_assets(state, effect)
     kind = effect["type"]
     if kind == "add_index":
         table = state.db.tables[effect["table"]]

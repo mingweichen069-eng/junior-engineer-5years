@@ -68,9 +68,17 @@ def compute(state: GameState) -> dict:
     hist = state.history or []
     recent12 = hist[-12:]
     months = state.months or []
-    tech = tech_rules.load()
-    total_nodes = len(tech["nodes"])
-    unlocked = sum(1 for v in state.tech.unlocked.values() if v)
+    # 三维分开读：玩家知识留在脑子里（跨局 profile），角色履历记做过什么，
+    # 公司资产才算数——「懂」不会自动变成「有」。
+    deployed = sum(1 for e in state.tech.entries.values() if e.get("deployed"))
+    assets = (
+        len(state.assets.indexes)
+        + sum(int(v) for v in state.assets.facilities.values())
+        + len(state.assets.rewritten_queries)
+        + len(state.assets.fixes)
+    )
+    resolved = len(state.career_rec.resolved_events)
+    incidents = len(state.career_rec.incidents)
 
     avail = _avg([(1 - w.error_rate) * 100 for w in recent12], 100.0)
     p95 = _avg([w.p95_ms for w in recent12], 0.0)
@@ -82,9 +90,6 @@ def compute(state: GameState) -> dict:
         state.actions.counts.get(k, 0)
         for k in ("optimize_index", "audit_cache", "archive_orders", "rewrite_pending", "consolidate_servers")
     )
-    passed = int(state.tech.exams_passed)
-    failed = int(state.tech.exams_failed)
-
     achievements = [
         _achievement("uptime", "稳如老狗", "近 12 周平均可用性拉到 99.9%",
                      avail, 99.9, "%", fmt=lambda v: f"{v:.2f}%"),
@@ -94,10 +99,10 @@ def compute(state: GameState) -> dict:
                      state.company.registered, 250_000, "人", fmt=lambda v: f"{v:,.0f} 人"),
         _achievement("cash", "账上有粮", "现金储备 60 万",
                      cash, 600_000, "元", fmt=lambda v: f"¥{v:,.0f}"),
-        _achievement("tech", "一直在学", f"掌握 12 个科技节点（共 {total_nodes} 个）",
-                     unlocked, 12, "个", fmt=lambda v: f"{v:.0f} 个"),
-        _achievement("exam", "真机过招", "通过 8 次真库 / 编码考核",
-                     passed, 8, "次", fmt=lambda v: f"{v:.0f} 次"),
+        _achievement("assets", "真的落地了", "公司里部署 8 项真实设施（索引 / 查询 / 代码 / 治理）",
+                     assets, 8, "项", fmt=lambda v: f"{v:.0f} 项"),
+        _achievement("incident", "扛住了事", "解决 3 起持续冲击线上的重大事件",
+                     resolved, 3, "起", fmt=lambda v: f"{v:.0f} 起"),
         _achievement("debt", "债没滚起来", "技术债压力压到 25% 以下",
                      debt_pct, 25, "%", higher_better=False, fmt=lambda v: f"{v:.0f}%"),
         _achievement("profit", "会算账", "累计利润 50 万",
@@ -110,8 +115,8 @@ def compute(state: GameState) -> dict:
                      state.meta.week, max(1, state.meta.review_week), "周", fmt=lambda v: f"W{v:.0f}"),
     ]
 
-    # 评级 = 达成度加权（科技 / 考核 / 维护略重，鼓励「持续经营」而不是「开局躺赢」）
-    weights = {"tech": 1.5, "exam": 1.5, "maint": 1.5, "uptime": 1.3, "debt": 1.2}
+    # 评级 = 达成度加权（落地 / 扛事 / 维护略重，鼓励「真的把系统修好」而不是「学得多」）
+    weights = {"assets": 1.5, "incident": 1.5, "maint": 1.5, "uptime": 1.3, "debt": 1.2}
     tw = sum(weights.get(a["id"], 1.0) for a in achievements)
     score = sum(a["pct"] * weights.get(a["id"], 1.0) for a in achievements) / tw
     rank = "S" if score >= 88 else "A" if score >= 72 else "B" if score >= 55 else "C" if score >= 38 else "D"
@@ -141,8 +146,8 @@ def compute(state: GameState) -> dict:
             {"label": "可用性", "value": f"{avail:.2f}%", "note": "近 12 周"},
             {"label": "大屏 p95", "value": f"{p95:.0f}ms", "note": "近 12 周"},
             {"label": "注册用户", "value": f"{state.company.registered:,}", "note": "人"},
-            {"label": "掌握科技", "value": f"{unlocked}/{total_nodes}", "note": "节点"},
-            {"label": "考核", "value": f"{passed} 过 / {failed} 挂", "note": "真机"},
+            {"label": "公司资产", "value": f"{assets} 项", "note": f"档案记 {deployed} 项"},
+            {"label": "重大事件", "value": f"解决 {resolved} 起", "note": f"事故 {incidents} 次"},
         ],
         "achievements": achievements,
         "milestones": list(state.review.milestones),

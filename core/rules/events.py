@@ -445,3 +445,127 @@ def pending_for_client(state: GameState) -> list[dict]:
             ],
         })
     return out
+
+
+# ---------------------------------------------------------------- 重大事件
+# V1.0：考核不再是一个独立系统，而是「重大事件」的解决过程。
+# 事件只描述现象，不剧透根因；它每周持续冲击全局数据，直到玩家真的
+# 部署了有效的东西。没有交卷、没有评分、没有冷却重考。
+
+
+def _major_resolved(state: GameState, active: dict) -> bool:
+    """解决条件只看公司资产：真的部署了什么，而不是「角色学会了什么」。"""
+    rule = active.get("resolve") or {}
+    kind = rule.get("kind")
+    if kind == "index_effective":
+        return any(rule.get("query") in i.effective_for for i in state.assets.indexes)
+    if kind == "rewrite":
+        return rule.get("query") in state.assets.rewritten_queries
+    if kind == "fix":
+        return rule.get("case_id") in state.assets.fixes
+    if kind == "facility":
+        return bool(state.assets.facilities.get(rule.get("key")))
+    return False
+
+
+def tick_major(state: GameState, catalog: list[dict] | None = None) -> dict:
+    """重大事件：触发 → 每周持续恶化 → 玩家真正解决才解除。"""
+    catalog = catalog or load_events()
+    majors = [e for e in catalog if e.get("major")]
+    active = state.events.active_major
+    out: dict = {"error_add": 0.0, "p95_add": 0.0, "trust": 0.0, "tickets": 0, "news": []}
+
+    # 每周最多新开一个重大事件，且同时最多挂两个
+    already_opened_this_week = any(a.get("opened_week") == state.meta.week for a in active)
+    if not already_opened_this_week and len(active) < 2:
+        for e in sorted(majors, key=lambda x: int(x.get("trigger_week", 4))):
+            if any(a["id"] == e["id"] for a in active):
+                continue
+            if state.events.counts.get(e["id"], 0) >= int(e.get("max_per_game", 1)):
+                continue
+            if state.meta.week < int(e.get("trigger_week", 4)):
+                continue
+            active.append({
+                "id": e["id"],
+                "name": e["name"],
+                "stakes": e.get("stakes", ""),
+                "narrative": e.get("narrative", ""),
+                "speaker": e.get("speaker", ""),
+                "clues": list(e.get("clues") or []),
+                "clue_level": 0,
+                "persist": dict(e.get("persist") or {}),
+                "resolve": dict(e.get("resolve") or {}),
+                "opened_week": state.meta.week,
+                "weeks": 0,
+            })
+            state.events.counts[e["id"]] = state.events.counts.get(e["id"], 0) + 1
+            state.events.log.append(EventLogEntry(
+                log_id=f"major-{e['id']}-W{state.meta.week}",
+                event_id=e["id"], title=e["name"], week=state.meta.week, day=1,
+                tag="fault", narrative=e.get("narrative", ""), speaker=e.get("speaker", ""),
+            ))
+            out["news"].append(f"重大事件：{e['name']}")
+            break
+
+    for a in list(active):
+        if _major_resolved(state, a):
+            active.remove(a)
+            state.career_rec.resolved_events.append({
+                "id": a["id"], "name": a["name"], "week": state.meta.week,
+                "weeks_open": a["weeks"],
+            })
+            state.org.manager_trust = min(100.0, state.org.manager_trust + 4.0)
+            state.ending.timeline.append(f"W{state.meta.week} 解决「{a['name']}」")
+            out["news"].append(f"「{a['name']}」已解决，线上恢复")
+            continue
+        a["weeks"] += 1
+        # 拖得越久，冲击越重：这是真实压力，不是「考试失败」的惩罚
+        scale = 1.0 + min(1.2, (a["weeks"] - 1) * 0.15)
+        p = a["persist"]
+        out["error_add"] += float(p.get("error_add", 0.0)) * scale
+        out["p95_add"] += float(p.get("p95_add", 0.0)) * scale
+        out["trust"] += float(p.get("trust", 0.0)) * scale
+        out["tickets"] += int(p.get("tickets", 0))
+        state.org.manager_trust = max(0.0, state.org.manager_trust + float(p.get("trust", 0.0)) * scale)
+        state.org.tickets += int(p.get("tickets", 0))
+    return out
+
+
+def major_for_client(state: GameState) -> list[dict]:
+    out = []
+    for a in state.events.active_major:
+        out.append({
+            "id": a["id"], "name": a["name"], "stakes": a["stakes"],
+            "narrative": a["narrative"], "speaker": a["speaker"],
+            "weeks": a["weeks"], "clue_level": a["clue_level"],
+            "clues": a["clues"][:a["clue_level"]],
+            "has_more_clues": a["clue_level"] < len(a["clues"]),
+            "persist": a["persist"],
+        })
+    return out
+
+
+def consult(state: GameState, major_id: str) -> dict:
+    """找同事/技术支持：花调查精力与一点预算，换一条更具体的观察线索。
+
+    线索只描述你看到什么，不告诉你该学什么、该建什么。
+    """
+    from core.rules import workbench
+
+    a = next((x for x in state.events.active_major if x["id"] == major_id), None)
+    if a is None:
+        return {"ok": False, "message": "没有这个未解决的重大事件"}
+    if a["clue_level"] >= len(a["clues"]):
+        return {"ok": False, "message": "能问的都问过了，接下来得自己去实验里查"}
+    cost_energy, cost_cash = 8, 30000
+    if state.player.energy < cost_energy and not state.meta.sandbox:
+        return {"ok": False, "message": f"调查精力不足（需要 {cost_energy}）"}
+    if state.company.cash_cents < cost_cash and not state.meta.sandbox:
+        return {"ok": False, "message": "预算不够请人帮忙"}
+    if not state.meta.sandbox:
+        state.player.energy -= cost_energy
+        state.company.cash_cents -= cost_cash
+    clue = a["clues"][a["clue_level"]]
+    a["clue_level"] += 1
+    workbench.mark(state, "cs_arch", "seen")
+    return {"ok": True, "message": clue, "level": a["clue_level"], "remaining_clues": len(a["clues"]) - a["clue_level"]}

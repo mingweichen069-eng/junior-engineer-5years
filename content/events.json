@@ -1,1630 +1,1742 @@
 {
- "version": 2,
- "events": [
-  {
-   "id": "E01_dashboard_slow",
-   "name": "大屏又卡了",
-   "tag": "fault",
-   "art": "fault",
-   "speaker": "运营 · 小周",
-   "narrative": "运营群里又炸了。大屏转圈转了十几秒，最后吐出一片空白。\n小周连发了三个问号，然后 @ 了你。\n会议室的门开着，老板站在门口，手里拿着手机。",
-   "stakes": "大屏走的是全表扫描，每次刷新都在和业务查询抢 IO。",
-   "root": true,
-   "priority": 2,
-   "cooldown_weeks": 4,
-   "max_per_game": 3,
-   "when": {
-    "all": [
-     {
-      "metric": "q_dashboard_ms",
-      "op": "gte",
-      "value": 800
-     }
-    ]
-   },
-   "effects": [
+  "version": 2,
+  "events": [
     {
-     "type": "trust",
-     "value": -5
-    },
-    {
-     "type": "tickets",
-     "value": 20
-    }
-   ],
-   "emit": [
-    {
-     "id": "E01_boss_ask",
-     "delay_days": 1
-    }
-   ]
-  },
-  {
-   "id": "E01_boss_ask",
-   "name": "老板在群里 @ 你",
-   "tag": "team",
-   "art": "team",
-   "speaker": "周明远 · 技术负责人",
-   "narrative": "「这个数为什么和昨天不一样？」\n周明远把手机递过来，屏幕上是那张大屏，数字停在三小时前。\n他没有生气，只是等着你给一个能写进周报的解释。",
-   "stakes": "",
-   "priority": 3,
-   "effects": [
-    {
-     "type": "trust",
-     "value": -3
-    }
-   ]
-  },
-  {
-   "id": "E02_peak_collapse",
-   "name": "早高峰雪崩",
-   "tag": "fault",
-   "art": "fault",
-   "speaker": "值班 · 老陈",
-   "narrative": "9:12，监控面板整片变红。\n数据库连接数打满，网关开始 502，客服电话在十分钟内响了四十次。\n老陈在电话那头说：「先止血，还是先找原因？」",
-   "stakes": "磁盘 IO 已经饱和，所有请求一起被拖慢。",
-   "root": true,
-   "priority": 1,
-   "cooldown_weeks": 3,
-   "when": {
-    "all": [
-     {
-      "metric": "io_util",
-      "op": "gte",
-      "value": 0.95
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "error_add",
-     "value": 0.15
-    },
-    {
-     "type": "p95_add",
-     "value": 1500
-    },
-    {
-     "type": "tickets",
-     "value": 120
-    },
-    {
-     "type": "ap",
-     "value": -4
-    }
-   ],
-   "emit": [
-    {
-     "id": "E02_support_flood",
-     "delay_days": 0
-    }
-   ]
-  },
-  {
-   "id": "E02_support_flood",
-   "name": "客服工单暴涨",
-   "tag": "team",
-   "art": "team",
-   "speaker": "客服主管",
-   "narrative": "工单系统在半小时内涌进三百条。\n大部分只有一句话：「打不开」「白屏」「付不了款」。\n客服主管把截图发到群里，没有配文字。",
-   "stakes": "",
-   "priority": 2,
-   "effects": [
-    {
-     "type": "tickets",
-     "value": 80
-    },
-    {
-     "type": "trust",
-     "value": -8
-    }
-   ]
-  },
-  {
-   "id": "E03_stale_dashboard",
-   "name": "老板：这数字对不上",
-   "tag": "business",
-   "art": "business",
-   "speaker": "财务 · 王姐",
-   "narrative": "「大屏上的成交额，和财务的账差了 6%。」\n王姐把两张表并排放在你面前，一张是缓存了 30 秒的大屏，一张是刚跑出来的对账。\n「不是说你错，」她说，「但老板会问。」",
-   "stakes": "缓存能降 QPS，代价是数据有窗口期。",
-   "root": true,
-   "priority": 3,
-   "cooldown_weeks": 6,
-   "max_per_game": 4,
-   "chance": 0.55,
-   "when": {
-    "all": [
-     {
-      "metric": "dashboard_cached",
-      "op": "eq",
-      "value": 1
-     },
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 9
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "trust",
-     "value": -4
-    },
-    {
-     "type": "tickets",
-     "value": 40
-    }
-   ]
-  },
-  {
-   "id": "E04_cache_stampede",
-   "name": "缓存集中过期",
-   "tag": "fault",
-   "art": "fault",
-   "speaker": "监控",
-   "narrative": "9:00 整，缓存集群里一批 key 同时到期。\n请求像退潮后突然涌回来的水，全部压在数据库上。\n吞吐掉了一半，p95 从 180ms 涨到 900ms。",
-   "stakes": "给所有 key 设同一个 TTL，就是把雪崩写进了配置里。",
-   "root": true,
-   "priority": 1,
-   "cooldown_weeks": 4,
-   "chance": 0.4,
-   "when": {
-    "all": [
-     {
-      "metric": "dashboard_cached",
-      "op": "eq",
-      "value": 1
-     },
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 6
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "error_add",
-     "value": 0.08
-    },
-    {
-     "type": "p95_add",
-     "value": 700
-    },
-    {
-     "type": "tickets",
-     "value": 30
-    }
-   ]
-  },
-  {
-   "id": "E07_disk_warning",
-   "name": "磁盘使用率超过 85%",
-   "tag": "fault",
-   "art": "fault",
-   "speaker": "告警",
-   "narrative": "磁盘 87%。\n再涨两个点，写入就会失败；再涨五个点，备份都做不了。\n订单还在以每天两万条的速度增长。",
-   "stakes": "归档比扩容便宜，但需要停机窗口。",
-   "root": true,
-   "priority": 2,
-   "cooldown_weeks": 4,
-   "when": {
-    "all": [
-     {
-      "metric": "disk_pct",
-      "op": "gte",
-      "value": 0.85
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "trust",
-     "value": -2
-    },
-    {
-     "type": "tickets",
-     "value": 5
-    }
-   ]
-  },
-  {
-   "id": "E05_laochen_unhappy",
-   "name": "老陈在工位上叹气",
-   "tag": "team",
-   "art": "team",
-   "speaker": "老陈 · 资深工程师",
-   "narrative": "老陈盯着工单列表看了很久，然后叹了口气。\n他没说话，把耳机戴上，继续改那段没人愿意碰的代码。\n你知道他在想什么：这些活本来不该由他来做。",
-   "stakes": "产品满意度太低时，最先流失的是能干活的人。",
-   "root": true,
-   "priority": 2,
-   "cooldown_weeks": 4,
-   "chance": 0.5,
-   "when": {
-    "all": [
-     {
-      "metric": "satisfaction_min",
-      "op": "lte",
-      "value": 45
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "trust",
-     "value": -2
-    }
-   ]
-  },
-  {
-   "id": "E06_promo_notice",
-   "name": "运营：两周后有一次大促",
-   "tag": "business",
-   "art": "business",
-   "speaker": "运营总监",
-   "narrative": "运营总监在群里发了一张排期表。\n两周后，双十一。预计流量是平时的 2.2 倍，持续两天。\n「技术这边需要什么支持，今天提。」她补了一句。",
-   "stakes": "大促可预见。现在做的每一个决定，两周后都会变成数字。",
-   "root": true,
-   "priority": 3,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "eq",
-      "value": 10
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "tickets",
-     "value": 5
-    }
-   ],
-   "essential": true
-  },
-  {
-   "id": "E10_new_filter",
-   "name": "订单列表要加筛选",
-   "tag": "business",
-   "art": "business",
-   "speaker": "产品 · 小林",
-   "narrative": "小林把原型推到你面前：订单列表要按状态、时间、金额三个维度筛选。\n「很简单吧？」她说，「就是加几个 where。」\n你看着现有的复合索引 (user_id, created_at)，知道这句话背后是另一回事。",
-   "stakes": "新谓词可能让现有索引失效，而索引不是免费的。",
-   "root": true,
-   "priority": 3,
-   "cooldown_weeks": 8,
-   "chance": 0.5,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 7
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "p95_add",
-     "value": 120
-    },
-    {
-     "type": "trust",
-     "value": 2
-    },
-    {
-     "type": "tickets",
-     "value": 6
-    },
-    {
-     "type": "spawn_debt",
-     "debt_id": "schema_drift",
-     "category": "query",
-     "severity": 2.0,
-     "growth": 0.02,
-     "name": "新筛选条件与索引不再适配"
-    },
-    {
-     "type": "ap",
-     "value": -2
-    }
-   ]
-  },
-  {
-   "id": "E11_export_report",
-   "name": "运营要导出三年订单",
-   "tag": "business",
-   "art": "business",
-   "speaker": "运营 · 小周",
-   "narrative": "「明早九点前要，」小周说，「老板要带去见投资人。」\n三年的订单，一千多万行。\n你可以现在跑，也可以告诉她这需要一张汇总表——但那要下周才能有。",
-   "stakes": "一次性大查询会抢走业务查询的 IO。",
-   "root": true,
-   "priority": 3,
-   "cooldown_weeks": 10,
-   "chance": 0.45,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 9
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "error_add",
-     "value": 0.02
-    },
-    {
-     "type": "p95_add",
-     "value": 300
-    },
-    {
-     "type": "trust",
-     "value": 1
-    },
-    {
-     "type": "spawn_debt",
-     "debt_id": "report_demand",
-     "category": "query",
-     "severity": 2.0,
-     "growth": 0.01,
-     "name": "高频报表需求，缺少汇总表"
-    }
-   ]
-  },
-  {
-   "id": "E08_boss_realtime",
-   "name": "老板要「实时数据」",
-   "tag": "business",
-   "art": "business",
-   "speaker": "周明远 · 技术负责人",
-   "narrative": "「我想要实时的。」\n周明远说这话时，大屏上是三小时前的数字。\n他没有说「必须」，但你知道这句话会在下一次周会上再出现一次。",
-   "stakes": "",
-   "root": true,
-   "priority": 3,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 9
-     },
-     {
-      "metric": "dashboard_cached",
-      "op": "eq",
-      "value": 0
-     }
-    ]
-   },
-   "effects": [
-    {
-     "type": "trust",
-     "value": -4
-    }
-   ]
-  },
-  {
-   "id": "D01_hire",
-   "name": "编制：一个 HC",
-   "tag": "team",
-   "art": "team",
-   "speaker": "周明远 · 技术负责人",
-   "decision": true,
-   "root": false,
-   "priority": 3,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.55,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 5
-     },
-     {
-      "metric": "cash",
-      "op": "gte",
-      "value": 120000
-     }
-    ]
-   },
-   "narrative": "周明远把你叫到小会议室，说今年还有一个 HC，但只批一个。\n「招个能立刻上手的，还是招个便宜的，你自己定。」\n他顿了一下：「但下个月的人效，我要看到变化。」\n窗外在下雨。你知道这个决定会在半年后才显出对错。",
-   "stakes": "HC 用掉就没有第二次。招贵的人解决当下，招便宜的人赌的是未来。",
-   "default": "none",
-   "choices": [
-    {
-     "id": "senior",
-     "label": "招一位资深 DBA",
-     "hint": "立刻能接手慢查询与容量规划，但现金压力集中在本月。",
-     "preview": [
-      "现金 -¥30,000",
-      "数据库技能 +4",
-      "主管信任 +3",
-      "每周行动力 +5（李维接走了一半的值班）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -3000000
+      "id": "E01_dashboard_slow",
+      "name": "大屏又卡了",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "运营 · 小周",
+      "narrative": "运营群里又炸了。大屏转圈转了十几秒，最后吐出一片空白。\n小周连发了三个问号，然后 @ 了你。\n会议室的门开着，老板站在门口，手里拿着手机。",
+      "stakes": "大屏刷新一次要十几秒，而且每次刷新，业务接口也跟着变慢。",
+      "root": true,
+      "priority": 2,
+      "cooldown_weeks": 4,
+      "max_per_game": 3,
+      "when": {
+        "all": [
+          {
+            "metric": "q_dashboard_ms",
+            "op": "gte",
+            "value": 800
+          }
+        ]
       },
-      {
-       "type": "skill",
-       "skills": {
-        "db": 4,
-        "sql": 2
-       }
-      },
-      {
-       "type": "trust",
-       "value": 3
-      },
-      {
-       "type": "ap_bonus",
-       "value": 5
-      }
-     ],
-     "reply": "老陈介绍来的人叫李维。第一天上班，他就翻出了三条没走索引的 SQL。"
-    },
-    {
-     "id": "junior",
-     "label": "招一个应届生",
-     "hint": "便宜、有冲劲，但需要你花时间带，前两个月是净支出。",
-     "preview": [
-      "现金 -¥8,000",
-      "客服工单 +10",
-      "主管信任 +1",
-      "每周行动力 +2（杂活有人干了）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -800000
-      },
-      {
-       "type": "tickets",
-       "value": 10
-      },
-      {
-       "type": "trust",
-       "value": 1
-      },
-      {
-       "type": "ap_bonus",
-       "value": 2
-      }
-     ],
-     "reply": "应届生叫周舟。他第一周写坏了两次测试库，但第二周就开始自己查文档了。"
-    },
-    {
-     "id": "none",
-     "label": "不招，把钱留作缓冲",
-     "hint": "现金更安全，但人手缺口会以工单和信任的形式回来。",
-     "preview": [
-      "主管信任 -2",
-      "产品满意度 -3"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -2
-      },
-      {
-       "type": "satisfaction",
-       "value": -3
-      }
-     ],
-     "reply": "周明远没说什么，只是把 HC 那一行划掉了。"
-    }
-   ]
-  },
-  {
-   "id": "D02_feature_vs_debt",
-   "name": "需求还是债",
-   "tag": "business",
-   "art": "business",
-   "speaker": "产品 · 小林",
-   "decision": true,
-   "root": false,
-   "priority": 3,
-   "cooldown_weeks": 6,
-   "max_per_game": 2,
-   "chance": 0.5,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 6
-     },
-     {
-      "any": [
-       {
-        "metric": "satisfaction_min",
-        "op": "lte",
-        "value": 65
-       },
-       {
-        "metric": "p95_ms",
-        "op": "gte",
-        "value": 300
-       }
+      "effects": [
+        {
+          "type": "trust",
+          "value": -5
+        },
+        {
+          "type": "tickets",
+          "value": 20
+        }
+      ],
+      "emit": [
+        {
+          "id": "E01_boss_ask",
+          "delay_days": 1
+        }
       ]
-     }
-    ]
-   },
-   "narrative": "产品把下个迭代的需求排了四个。\n你算了一下：如果全接，这周的 AP 只够写代码，不够还任何一笔技术债。\n老陈在群里发了一句：「那个 DATE() 的查询还没改。」\n没有人回他。",
-   "stakes": "功能会带来满意度，债务会带来事故。两边都有账，只是记账的时间不同。",
-   "default": "scope",
-   "choices": [
-    {
-     "id": "accept",
-     "label": "全接，先把功能交付",
-     "hint": "满意度和信任都会涨，但会新增一笔按负载增长的债。",
-     "preview": [
-      "满意度 +8",
-      "主管信任 +4",
-      "新增技术债",
-      "本周行动力 -3"
-     ],
-     "effects": [
-      {
-       "type": "satisfaction",
-       "value": 8
-      },
-      {
-       "type": "trust",
-       "value": 4
-      },
-      {
-       "type": "spawn_debt",
-       "debt_id": "feature_crunch",
-       "category": "arch",
-       "severity": 3.0,
-       "growth": 0.025,
-       "name": "赶功能留下的架构债"
-      },
-      {
-       "type": "ap",
-       "value": -3
-      }
-     ],
-     "reply": "四个需求按时上线。两周后，其中一个开始拖慢订单列表。"
     },
     {
-     "id": "refuse",
-     "label": "推掉两个，先还债",
-     "hint": "短期满意度会掉，但你能腾出手处理最危险的那笔债。",
-     "preview": [
-      "满意度 -10",
-      "主管信任 +2",
-      "技术债压力下降",
-      "本周行动力 +2"
-     ],
-     "effects": [
-      {
-       "type": "satisfaction",
-       "value": -10
-      },
-      {
-       "type": "trust",
-       "value": 2
-      },
-      {
-       "type": "resolve_debt",
-       "debt_id": "nonsargable_daily_report"
-      },
-      {
-       "type": "ap",
-       "value": 2
-      }
-     ],
-     "reply": "小林在评审会上没说话。但周五，大屏的查询从 900ms 降到了 60ms。"
+      "id": "E01_boss_ask",
+      "name": "老板在群里 @ 你",
+      "tag": "team",
+      "art": "team",
+      "speaker": "周明远 · 技术负责人",
+      "narrative": "「这个数为什么和昨天不一样？」\n周明远把手机递过来，屏幕上是那张大屏，数字停在三小时前。\n他没有生气，只是等着你给一个能写进周报的解释。",
+      "stakes": "",
+      "priority": 3,
+      "effects": [
+        {
+          "type": "trust",
+          "value": -3
+        }
+      ]
     },
     {
-     "id": "scope",
-     "label": "砍范围，只上最简单的那个",
-     "hint": "折中：花一点钱买时间，两边都不算太难看。",
-     "preview": [
-      "现金 -¥5,000",
-      "满意度 +2",
-      "小幅新增技术债"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -500000
+      "id": "E02_peak_collapse",
+      "name": "早高峰雪崩",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "值班 · 老陈",
+      "narrative": "9:12，监控面板整片变红。\n数据库连接数打满，网关开始 502，客服电话在十分钟内响了四十次。\n老陈在电话那头说：「先止血，还是先找原因？」",
+      "stakes": "高峰一到，所有接口一起变慢，看不出是哪一条查询的毛病。",
+      "root": true,
+      "priority": 1,
+      "cooldown_weeks": 3,
+      "when": {
+        "all": [
+          {
+            "metric": "io_util",
+            "op": "gte",
+            "value": 0.95
+          }
+        ]
       },
-      {
-       "type": "satisfaction",
-       "value": 2
+      "effects": [
+        {
+          "type": "error_add",
+          "value": 0.15
+        },
+        {
+          "type": "p95_add",
+          "value": 1500
+        },
+        {
+          "type": "tickets",
+          "value": 120
+        },
+        {
+          "type": "ap",
+          "value": -4
+        }
+      ],
+      "emit": [
+        {
+          "id": "E02_support_flood",
+          "delay_days": 0
+        }
+      ]
+    },
+    {
+      "id": "E02_support_flood",
+      "name": "客服工单暴涨",
+      "tag": "team",
+      "art": "team",
+      "speaker": "客服主管",
+      "narrative": "工单系统在半小时内涌进三百条。\n大部分只有一句话：「打不开」「白屏」「付不了款」。\n客服主管把截图发到群里，没有配文字。",
+      "stakes": "",
+      "priority": 2,
+      "effects": [
+        {
+          "type": "tickets",
+          "value": 80
+        },
+        {
+          "type": "trust",
+          "value": -8
+        }
+      ]
+    },
+    {
+      "id": "E03_stale_dashboard",
+      "name": "老板：这数字对不上",
+      "tag": "business",
+      "art": "business",
+      "speaker": "财务 · 王姐",
+      "narrative": "「大屏上的成交额，和财务的账差了 6%。」\n王姐把两张表并排放在你面前，一张是缓存了 30 秒的大屏，一张是刚跑出来的对账。\n「不是说你错，」她说，「但老板会问。」",
+      "stakes": "运营说大屏上的数字和后台对不上，差了大概十分钟。",
+      "root": true,
+      "priority": 3,
+      "cooldown_weeks": 6,
+      "max_per_game": 4,
+      "chance": 0.55,
+      "when": {
+        "all": [
+          {
+            "metric": "dashboard_cached",
+            "op": "eq",
+            "value": 1
+          },
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 9
+          }
+        ]
       },
-      {
-       "type": "spawn_debt",
-       "debt_id": "feature_crunch",
-       "category": "arch",
-       "severity": 1.5,
-       "growth": 0.015,
-       "name": "砍范围留下的半成品"
-      }
-     ],
-     "reply": "你只上了筛选，没做导出。小林说「先这样吧」，语气比平时轻。"
+      "effects": [
+        {
+          "type": "trust",
+          "value": -4
+        },
+        {
+          "type": "tickets",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "id": "E04_cache_stampede",
+      "name": "缓存集中过期",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "监控",
+      "narrative": "9:00 整，缓存集群里一批 key 同时到期。\n请求像退潮后突然涌回来的水，全部压在数据库上。\n吞吐掉了一半，p95 从 180ms 涨到 900ms。",
+      "stakes": "整点一过，缓存像被同时清空了一样，回源流量直接顶到天花板。",
+      "root": true,
+      "priority": 1,
+      "cooldown_weeks": 4,
+      "chance": 0.4,
+      "when": {
+        "all": [
+          {
+            "metric": "dashboard_cached",
+            "op": "eq",
+            "value": 1
+          },
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 6
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "error_add",
+          "value": 0.08
+        },
+        {
+          "type": "p95_add",
+          "value": 700
+        },
+        {
+          "type": "tickets",
+          "value": 30
+        }
+      ]
+    },
+    {
+      "id": "E07_disk_warning",
+      "name": "磁盘使用率超过 85%",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "告警",
+      "narrative": "磁盘 87%。\n再涨两个点，写入就会失败；再涨五个点，备份都做不了。\n订单还在以每天两万条的速度增长。",
+      "stakes": "归档比扩容便宜，但需要停机窗口。",
+      "root": true,
+      "priority": 2,
+      "cooldown_weeks": 4,
+      "when": {
+        "all": [
+          {
+            "metric": "disk_pct",
+            "op": "gte",
+            "value": 0.85
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "trust",
+          "value": -2
+        },
+        {
+          "type": "tickets",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "id": "E05_laochen_unhappy",
+      "name": "老陈在工位上叹气",
+      "tag": "team",
+      "art": "team",
+      "speaker": "老陈 · 资深工程师",
+      "narrative": "老陈盯着工单列表看了很久，然后叹了口气。\n他没说话，把耳机戴上，继续改那段没人愿意碰的代码。\n你知道他在想什么：这些活本来不该由他来做。",
+      "stakes": "产品满意度太低时，最先流失的是能干活的人。",
+      "root": true,
+      "priority": 2,
+      "cooldown_weeks": 4,
+      "chance": 0.5,
+      "when": {
+        "all": [
+          {
+            "metric": "satisfaction_min",
+            "op": "lte",
+            "value": 45
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "trust",
+          "value": -2
+        }
+      ]
+    },
+    {
+      "id": "E06_promo_notice",
+      "name": "运营：两周后有一次大促",
+      "tag": "business",
+      "art": "business",
+      "speaker": "运营总监",
+      "narrative": "运营总监在群里发了一张排期表。\n两周后，双十一。预计流量是平时的 2.2 倍，持续两天。\n「技术这边需要什么支持，今天提。」她补了一句。",
+      "stakes": "大促可预见。现在做的每一个决定，两周后都会变成数字。",
+      "root": true,
+      "priority": 3,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "eq",
+            "value": 10
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "tickets",
+          "value": 5
+        }
+      ],
+      "essential": true
+    },
+    {
+      "id": "E10_new_filter",
+      "name": "订单列表要加筛选",
+      "tag": "business",
+      "art": "business",
+      "speaker": "产品 · 小林",
+      "narrative": "小林把原型推到你面前：订单列表要按状态、时间、金额三个维度筛选。\n「很简单吧？」她说，「就是加几个 where。」\n你看着现有的复合索引 (user_id, created_at)，知道这句话背后是另一回事。",
+      "stakes": "新谓词可能让现有索引失效，而索引不是免费的。",
+      "root": true,
+      "priority": 3,
+      "cooldown_weeks": 8,
+      "chance": 0.5,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 7
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "p95_add",
+          "value": 120
+        },
+        {
+          "type": "trust",
+          "value": 2
+        },
+        {
+          "type": "tickets",
+          "value": 6
+        },
+        {
+          "type": "spawn_debt",
+          "debt_id": "schema_drift",
+          "category": "query",
+          "severity": 2.0,
+          "growth": 0.02,
+          "name": "新筛选条件与索引不再适配"
+        },
+        {
+          "type": "ap",
+          "value": -2
+        }
+      ]
+    },
+    {
+      "id": "E11_export_report",
+      "name": "运营要导出三年订单",
+      "tag": "business",
+      "art": "business",
+      "speaker": "运营 · 小周",
+      "narrative": "「明早九点前要，」小周说，「老板要带去见投资人。」\n三年的订单，一千多万行。\n你可以现在跑，也可以告诉她这需要一张汇总表——但那要下周才能有。",
+      "stakes": "每到周一早上，导出任务一跑，别的接口就跟着抖。",
+      "root": true,
+      "priority": 3,
+      "cooldown_weeks": 10,
+      "chance": 0.45,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 9
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "error_add",
+          "value": 0.02
+        },
+        {
+          "type": "p95_add",
+          "value": 300
+        },
+        {
+          "type": "trust",
+          "value": 1
+        },
+        {
+          "type": "spawn_debt",
+          "debt_id": "report_demand",
+          "category": "query",
+          "severity": 2.0,
+          "growth": 0.01,
+          "name": "高频报表需求，缺少汇总表"
+        }
+      ]
+    },
+    {
+      "id": "E08_boss_realtime",
+      "name": "老板要「实时数据」",
+      "tag": "business",
+      "art": "business",
+      "speaker": "周明远 · 技术负责人",
+      "narrative": "「我想要实时的。」\n周明远说这话时，大屏上是三小时前的数字。\n他没有说「必须」，但你知道这句话会在下一次周会上再出现一次。",
+      "stakes": "",
+      "root": true,
+      "priority": 3,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 9
+          },
+          {
+            "metric": "dashboard_cached",
+            "op": "eq",
+            "value": 0
+          }
+        ]
+      },
+      "effects": [
+        {
+          "type": "trust",
+          "value": -4
+        }
+      ]
+    },
+    {
+      "id": "D01_hire",
+      "name": "编制：一个 HC",
+      "tag": "team",
+      "art": "team",
+      "speaker": "周明远 · 技术负责人",
+      "decision": true,
+      "root": false,
+      "priority": 3,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.55,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 5
+          },
+          {
+            "metric": "cash",
+            "op": "gte",
+            "value": 120000
+          }
+        ]
+      },
+      "narrative": "周明远把你叫到小会议室，说今年还有一个 HC，但只批一个。\n「招个能立刻上手的，还是招个便宜的，你自己定。」\n他顿了一下：「但下个月的人效，我要看到变化。」\n窗外在下雨。你知道这个决定会在半年后才显出对错。",
+      "stakes": "HC 用掉就没有第二次。招贵的人解决当下，招便宜的人赌的是未来。",
+      "default": "none",
+      "choices": [
+        {
+          "id": "senior",
+          "label": "招一位资深 DBA",
+          "hint": "立刻能接手慢查询与容量规划，但现金压力集中在本月。",
+          "preview": [
+            "现金 -¥30,000",
+            "数据库技能 +4",
+            "主管信任 +3",
+            "每周行动力 +5（李维接走了一半的值班）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -3000000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "db": 4,
+                "sql": 2
+              }
+            },
+            {
+              "type": "trust",
+              "value": 3
+            },
+            {
+              "type": "ap_bonus",
+              "value": 5
+            }
+          ],
+          "reply": "老陈介绍来的人叫李维。第一天上班，他就翻出了三条没走索引的 SQL。"
+        },
+        {
+          "id": "junior",
+          "label": "招一个应届生",
+          "hint": "便宜、有冲劲，但需要你花时间带，前两个月是净支出。",
+          "preview": [
+            "现金 -¥8,000",
+            "客服工单 +10",
+            "主管信任 +1",
+            "每周行动力 +2（杂活有人干了）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -800000
+            },
+            {
+              "type": "tickets",
+              "value": 10
+            },
+            {
+              "type": "trust",
+              "value": 1
+            },
+            {
+              "type": "ap_bonus",
+              "value": 2
+            }
+          ],
+          "reply": "应届生叫周舟。他第一周写坏了两次测试库，但第二周就开始自己查文档了。"
+        },
+        {
+          "id": "none",
+          "label": "不招，把钱留作缓冲",
+          "hint": "现金更安全，但人手缺口会以工单和信任的形式回来。",
+          "preview": [
+            "主管信任 -2",
+            "产品满意度 -3"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -2
+            },
+            {
+              "type": "satisfaction",
+              "value": -3
+            }
+          ],
+          "reply": "周明远没说什么，只是把 HC 那一行划掉了。"
+        }
+      ]
+    },
+    {
+      "id": "D02_feature_vs_debt",
+      "name": "需求还是债",
+      "tag": "business",
+      "art": "business",
+      "speaker": "产品 · 小林",
+      "decision": true,
+      "root": false,
+      "priority": 3,
+      "cooldown_weeks": 6,
+      "max_per_game": 2,
+      "chance": 0.5,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 6
+          },
+          {
+            "any": [
+              {
+                "metric": "satisfaction_min",
+                "op": "lte",
+                "value": 65
+              },
+              {
+                "metric": "p95_ms",
+                "op": "gte",
+                "value": 300
+              }
+            ]
+          }
+        ]
+      },
+      "narrative": "产品把下个迭代的需求排了四个。\n你算了一下：如果全接，这周的 AP 只够写代码，不够还任何一笔技术债。\n老陈在群里发了一句：「那个 DATE() 的查询还没改。」\n没有人回他。",
+      "stakes": "功能会带来满意度，债务会带来事故。两边都有账，只是记账的时间不同。",
+      "default": "scope",
+      "choices": [
+        {
+          "id": "accept",
+          "label": "全接，先把功能交付",
+          "hint": "满意度和信任都会涨，但会新增一笔按负载增长的债。",
+          "preview": [
+            "满意度 +8",
+            "主管信任 +4",
+            "新增技术债",
+            "本周行动力 -3"
+          ],
+          "effects": [
+            {
+              "type": "satisfaction",
+              "value": 8
+            },
+            {
+              "type": "trust",
+              "value": 4
+            },
+            {
+              "type": "spawn_debt",
+              "debt_id": "feature_crunch",
+              "category": "arch",
+              "severity": 3.0,
+              "growth": 0.025,
+              "name": "赶功能留下的架构债"
+            },
+            {
+              "type": "ap",
+              "value": -3
+            }
+          ],
+          "reply": "四个需求按时上线。两周后，其中一个开始拖慢订单列表。"
+        },
+        {
+          "id": "refuse",
+          "label": "推掉两个，先还债",
+          "hint": "短期满意度会掉，但你能腾出手处理最危险的那笔债。",
+          "preview": [
+            "满意度 -10",
+            "主管信任 +2",
+            "技术债压力下降",
+            "本周行动力 +2"
+          ],
+          "effects": [
+            {
+              "type": "satisfaction",
+              "value": -10
+            },
+            {
+              "type": "trust",
+              "value": 2
+            },
+            {
+              "type": "resolve_debt",
+              "debt_id": "nonsargable_daily_report"
+            },
+            {
+              "type": "ap",
+              "value": 2
+            }
+          ],
+          "reply": "小林在评审会上没说话。但周五，大屏的查询从 900ms 降到了 60ms。"
+        },
+        {
+          "id": "scope",
+          "label": "砍范围，只上最简单的那个",
+          "hint": "折中：花一点钱买时间，两边都不算太难看。",
+          "preview": [
+            "现金 -¥5,000",
+            "满意度 +2",
+            "小幅新增技术债"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -500000
+            },
+            {
+              "type": "satisfaction",
+              "value": 2
+            },
+            {
+              "type": "spawn_debt",
+              "debt_id": "feature_crunch",
+              "category": "arch",
+              "severity": 1.5,
+              "growth": 0.015,
+              "name": "砍范围留下的半成品"
+            }
+          ],
+          "reply": "你只上了筛选，没做导出。小林说「先这样吧」，语气比平时轻。"
+        }
+      ]
+    },
+    {
+      "id": "D03_cloud",
+      "name": "上不上云",
+      "tag": "finance",
+      "art": "finance",
+      "speaker": "CTO · 王总",
+      "decision": true,
+      "root": false,
+      "priority": 2,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.45,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 8
+          },
+          {
+            "metric": "cash",
+            "op": "gte",
+            "value": 200000
+          }
+        ]
+      },
+      "narrative": "云厂商的销售第三次来公司，带了一页 ROI 测算。\n自建机房今年续约，报价涨了 40%。但迁移意味着至少两周双跑，以及一次没人敢保证的成功率。\n王总说：「你评估，我签字。」",
+      "stakes": "上云是长期成本结构的改变，不是一次技术选型。",
+      "default": "hold",
+      "choices": [
+        {
+          "id": "cloud",
+          "label": "整体上云",
+          "hint": "一次性迁移成本高，但弹性扩容从此不用等采购。",
+          "preview": [
+            "现金 -¥60,000",
+            "运维技能 +5",
+            "主管信任 +3",
+            "每周行动力 +3（托管省下的运维时间）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -6000000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 5
+              }
+            },
+            {
+              "type": "trust",
+              "value": 3
+            },
+            {
+              "type": "flag",
+              "flag": "on_cloud"
+            },
+            {
+              "type": "ap_bonus",
+              "value": 3
+            }
+          ],
+          "reply": "迁移在第二个周末完成。周一早上，你第一次不用先看机房温度。"
+        },
+        {
+          "id": "expand",
+          "label": "自建扩容",
+          "hint": "便宜、可控，但扩容周期仍然是按周算。",
+          "preview": [
+            "现金 -¥25,000",
+            "应用服务器 +2",
+            "主管信任 +1",
+            "未来两周行动力 -3"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -2500000
+            },
+            {
+              "type": "servers",
+              "value": 2
+            },
+            {
+              "type": "trust",
+              "value": 1
+            },
+            {
+              "type": "ap_temp",
+              "value": -3,
+              "weeks": 2
+            }
+          ],
+          "reply": "两台新机器上架。采购单上写着「预计下批次到货」，你把这句话记在了心里。"
+        },
+        {
+          "id": "hold",
+          "label": "维持现状",
+          "hint": "省下现金，但容量缺口会以事故的形式回来。",
+          "preview": [
+            "主管信任 -3",
+            "新增技术债：容量不足"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -3
+            },
+            {
+              "type": "spawn_debt",
+              "debt_id": "no_capacity",
+              "category": "ops",
+              "severity": 2.5,
+              "growth": 0.02,
+              "name": "容量没有余量"
+            }
+          ],
+          "reply": "王总点了点头。销售的名片被你夹进了一本不会翻开的笔记本。"
+        }
+      ]
+    },
+    {
+      "id": "D04_night_alert",
+      "name": "凌晨三点的告警",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "值班手机",
+      "decision": true,
+      "root": false,
+      "priority": 2,
+      "cooldown_weeks": 5,
+      "max_per_game": 2,
+      "chance": 0.5,
+      "when": {
+        "all": [
+          {
+            "metric": "error_rate",
+            "op": "gte",
+            "value": 0.02
+          }
+        ]
+      },
+      "narrative": "手机在 3:07 震动。错误率从 0.3% 跳到 4%，持续了 11 分钟，然后自己好了。\n你翻日志，只看到一堆超时。没有根因，也没有人报障。\n你可以现在叫醒所有人排查，也可以先记下来，等天亮。",
+      "stakes": "没有根因的故障会再来一次，而且第二次通常更贵。",
+      "default": "note",
+      "choices": [
+        {
+          "id": "wake",
+          "label": "叫醒老陈，一起排查",
+          "hint": "付出信任与人情，换来一个可能被提前掐掉的隐患。",
+          "preview": [
+            "现金 -¥3,000",
+            "运维技能 +3",
+            "主管信任 -2",
+            "本周行动力 -4（通宵的代价）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -300000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 3
+              }
+            },
+            {
+              "type": "trust",
+              "value": -2
+            },
+            {
+              "type": "resolve_debt",
+              "debt_id": "no_monitoring"
+            },
+            {
+              "type": "ap",
+              "value": -4
+            }
+          ],
+          "reply": "你们在 4:40 找到了一条慢查询。它不在监控面板上，因为它太慢了，慢到超时都没记录。"
+        },
+        {
+          "id": "throttle",
+          "label": "先加一条限流规则兜住",
+          "hint": "不找根因，先限制爆炸半径。代价是少量用户被拒绝。",
+          "preview": [
+            "现金 -¥1,500",
+            "客服工单 +10"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -150000
+            },
+            {
+              "type": "tickets",
+              "value": 10
+            },
+            {
+              "type": "flag",
+              "flag": "throttled"
+            }
+          ],
+          "reply": "限流规则生效后，错误率回到了 0.2%。但那 11 分钟仍然没有解释。"
+        },
+        {
+          "id": "note",
+          "label": "记一笔，天亮再说",
+          "hint": "什么都不做。下周可能再抖一次。",
+          "preview": [
+            "下周错误率略微上升",
+            "主管信任 -1"
+          ],
+          "effects": [
+            {
+              "type": "error_add",
+              "value": 0.02
+            },
+            {
+              "type": "trust",
+              "value": -1
+            }
+          ],
+          "reply": "你在值班日志里写了一行，然后躺下。天花板很白。"
+        }
+      ]
+    },
+    {
+      "id": "D05_promo_budget",
+      "name": "大促前一周",
+      "tag": "business",
+      "art": "business",
+      "speaker": "周明远 · 技术负责人",
+      "decision": true,
+      "root": false,
+      "priority": 4,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.95,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "eq",
+            "value": 11
+          }
+        ]
+      },
+      "narrative": "双十一的排期已经发到全员群。运营预估峰值是平时的 2.2 倍。\n财务批了一笔临时预算，但只够做一件事：扩机器、加缓存，或者做一次完整的压测。\n「三选一，」周明远说，「别告诉我三个都要。」",
+      "stakes": "大促只看结果。选错不是花钱的问题，是两天里能不能开门的问题。",
+      "default": "drill",
+      "choices": [
+        {
+          "id": "scale",
+          "label": "扩容三台应用服务器",
+          "hint": "直接抬高应用层并发上限，对付排队最有效。",
+          "preview": [
+            "现金 -¥25,000",
+            "应用服务器 +3",
+            "大促准备完成"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -2500000
+            },
+            {
+              "type": "servers",
+              "value": 3
+            },
+            {
+              "type": "flag",
+              "flag": "promo_prepared"
+            }
+          ],
+          "reply": "三台机器在周三前就绪。你看着容量曲线，心里稍微踏实了一点。"
+        },
+        {
+          "id": "cache",
+          "label": "加缓存并预热",
+          "hint": "把读流量挡在数据库外面，但一致性窗口会变长。",
+          "preview": [
+            "现金 -¥12,000",
+            "大促准备完成",
+            "新增缓存一致性风险"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -1200000
+            },
+            {
+              "type": "flag",
+              "flag": "promo_prepared"
+            },
+            {
+              "type": "spawn_debt",
+              "debt_id": "cache_warm_risk",
+              "category": "arch",
+              "severity": 1.5,
+              "growth": 0.01,
+              "name": "预热缓存的失效路径未审计"
+            }
+          ],
+          "reply": "预热脚本跑了四十分钟。峰值到来时，数据库 QPS 只有平时的 1.3 倍。"
+        },
+        {
+          "id": "drill",
+          "label": "做一次完整压测",
+          "hint": "不买容量，买的是「知道瓶颈在哪」。",
+          "preview": [
+            "现金 -¥8,000",
+            "运维技能 +3",
+            "大促准备完成",
+            "本周行动力 -3"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -800000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 3
+              }
+            },
+            {
+              "type": "flag",
+              "flag": "promo_prepared"
+            },
+            {
+              "type": "ap",
+              "value": -3
+            }
+          ],
+          "reply": "压测把连接池先打满了。你在周三就知道了这件事，而不是在双十一当天。"
+        }
+      ]
+    },
+    {
+      "id": "D06_poach",
+      "name": "猎头的电话",
+      "tag": "team",
+      "art": "team",
+      "speaker": "陌生号码",
+      "decision": true,
+      "root": false,
+      "priority": 2,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.4,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 10
+          },
+          {
+            "metric": "trust",
+            "op": "lte",
+            "value": 58
+          }
+        ]
+      },
+      "narrative": "一个陌生号码打来，说有个岗位，薪资上浮 40%，做的是你熟悉的方向。\n「不用现在答复，」对方说，「但下周他们就要定人。」\n你把手机扣在桌上，屏幕还亮着。",
+      "stakes": "这不是忠诚测试。留下或离开，都会改变你在这家公司里的位置。",
+      "default": "stay",
+      "choices": [
+        {
+          "id": "interview",
+          "label": "去聊一次，不承诺",
+          "hint": "你会知道自己的市场价，但消息传出去，信任会掉。",
+          "preview": [
+            "主管信任 -5",
+            "解锁「面试」状态"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -5
+            },
+            {
+              "type": "flag",
+              "flag": "interviewed"
+            }
+          ],
+          "reply": "对面开出的条件比电话里说的更好。你走出写字楼时，天已经黑了。"
+        },
+        {
+          "id": "stay",
+          "label": "回绝，把事做完",
+          "hint": "信任和满意度都会涨一点。你放弃了一次议价机会。",
+          "preview": [
+            "主管信任 +3",
+            "产品满意度 +2"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": 3
+            },
+            {
+              "type": "satisfaction",
+              "value": 2
+            }
+          ],
+          "reply": "你回了「暂时不考虑」。第二天，周明远把核心链路的改造交给了你。"
+        },
+        {
+          "id": "negotiate",
+          "label": "拿这个 offer 去谈条件",
+          "hint": "能换来一次性现金，但会留下「他在看机会」的印象。",
+          "preview": [
+            "现金 +¥15,000",
+            "主管信任 -1"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": 1500000
+            },
+            {
+              "type": "trust",
+              "value": -1
+            },
+            {
+              "type": "flag",
+              "flag": "negotiated"
+            }
+          ],
+          "reply": "加薪批了，附带一句「今年不会再有了」。你把它当成承诺，也当成提醒。"
+        }
+      ]
+    },
+    {
+      "id": "D07_incident_report",
+      "name": "事故报告怎么写",
+      "tag": "team",
+      "art": "fault",
+      "speaker": "周明远 · 技术负责人",
+      "decision": true,
+      "root": false,
+      "priority": 3,
+      "cooldown_weeks": 8,
+      "max_per_game": 2,
+      "chance": 0.55,
+      "when": {
+        "all": [
+          {
+            "metric": "error_rate",
+            "op": "gte",
+            "value": 0.05
+          }
+        ]
+      },
+      "narrative": "这次事故影响了两万用户，四十分钟。\n周明远要一份对外说明。他说：「实事求是，但也要考虑客户情绪。」\n你知道「考虑情绪」这四个字可以有很多种写法。",
+      "stakes": "报告会被存档。半年后有人翻出来时，它代表你对这件事的态度。",
+      "default": "honest",
+      "choices": [
+        {
+          "id": "honest",
+          "label": "如实写，包括我们的失误",
+          "hint": "短期信任受损，但团队会知道复盘是安全的。",
+          "preview": [
+            "主管信任 -6",
+            "产品满意度 +3",
+            "运维技能 +2"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -6
+            },
+            {
+              "type": "satisfaction",
+              "value": 3
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 2
+              }
+            }
+          ],
+          "reply": "报告发出去后，两个客户回了邮件，说谢谢你们讲清楚。"
+        },
+        {
+          "id": "soften",
+          "label": "淡化处理，强调已修复",
+          "hint": "外面好看，里面留下一个没人愿意再提的坑。",
+          "preview": [
+            "主管信任 +2",
+            "产品满意度 -2"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": 2
+            },
+            {
+              "type": "satisfaction",
+              "value": -2
+            },
+            {
+              "type": "flag",
+              "flag": "hidden_risk"
+            }
+          ],
+          "reply": "说明发出去后，群里安静了。老陈把复盘文档的权限改成了「仅自己可见」。"
+        },
+        {
+          "id": "blame",
+          "label": "把一部分原因归给云厂商",
+          "hint": "能转移注意力，但懂行的人会看出来。",
+          "preview": [
+            "主管信任 -2",
+            "产品满意度 -4"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -2
+            },
+            {
+              "type": "satisfaction",
+              "value": -4
+            }
+          ],
+          "reply": "云厂商的客户成功经理在群里发了一份时间线。时间线和你的报告有一处对不上。"
+        }
+      ]
+    },
+    {
+      "id": "D08_mentor",
+      "name": "带一个新人",
+      "tag": "team",
+      "art": "team",
+      "speaker": "HR · 张姐",
+      "decision": true,
+      "root": false,
+      "priority": 2,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.45,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 9
+          },
+          {
+            "metric": "trust",
+            "op": "gte",
+            "value": 55
+          }
+        ]
+      },
+      "narrative": "HR 把一个实习生领到你工位旁。\n「跟着你学两周，」她说，「不用特别安排，让他看看真实的工作就行。」\n你想起自己刚入职时，没人有空管你。",
+      "stakes": "带人要花时间，而不带人的团队会在半年后开始还这笔账。",
+      "default": "shadow",
+      "choices": [
+        {
+          "id": "teach",
+          "label": "认真带两周",
+          "hint": "本周少 1 点行动力，换来团队能力与信任。",
+          "preview": [
+            "本周行动力 -1",
+            "后端技能 +2",
+            "主管信任 +5"
+          ],
+          "effects": [
+            {
+              "type": "ap",
+              "value": -1
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "backend": 2
+              }
+            },
+            {
+              "type": "trust",
+              "value": 5
+            }
+          ],
+          "reply": "第二周，他独立修掉了一个空指针。你在 code review 里写了「不错」。"
+        },
+        {
+          "id": "shadow",
+          "label": "让他自己看文档",
+          "hint": "不占你的时间，但他大概率学不到真正的东西。",
+          "preview": [
+            "主管信任 -1"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -1
+            }
+          ],
+          "reply": "两周后他走了。HR 说，实习反馈里只有一句「文档比较全」。"
+        },
+        {
+          "id": "task",
+          "label": "直接给一个小任务",
+          "hint": "边做边学，你会收到一些工单。",
+          "preview": [
+            "客服工单 +5",
+            "主管信任 +2"
+          ],
+          "effects": [
+            {
+              "type": "tickets",
+              "value": 5
+            },
+            {
+              "type": "trust",
+              "value": 2
+            }
+          ],
+          "reply": "他改错了一个配置，测试环境挂了半天。但他记住了那次教训。"
+        }
+      ]
+    },
+    {
+      "id": "D09_rewrite",
+      "name": "要不要重写",
+      "tag": "business",
+      "art": "business",
+      "speaker": "老陈 · 资深工程师",
+      "decision": true,
+      "root": false,
+      "priority": 3,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.5,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 12
+          },
+          {
+            "metric": "p95_ms",
+            "op": "gte",
+            "value": 300
+          }
+        ]
+      },
+      "narrative": "订单服务的代码是三年前写的，现在每加一个字段要改四个地方。\n重写需要两个月，期间功能冻结；不重写，下个季度的需求会越堆越慢。\n老陈说：「我都能做。但我建议你想清楚，谁来维护第二版。」",
+      "stakes": "重写是这局里最贵的一次赌注。它可能救你，也可能只是换来一份更整齐的债。",
+      "default": "observe",
+      "choices": [
+        {
+          "id": "rewrite",
+          "label": "立项重写",
+          "hint": "花大钱换结构，但功能会停两个月。",
+          "preview": [
+            "现金 -¥40,000",
+            "后端技能 +5",
+            "主管信任 +2",
+            "本周行动力 -4"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -4000000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "backend": 5
+              }
+            },
+            {
+              "type": "trust",
+              "value": 2
+            },
+            {
+              "type": "flag",
+              "flag": "rewrote_core"
+            },
+            {
+              "type": "ap",
+              "value": -4
+            }
+          ],
+          "reply": "重写的第一个版本在第六周上线。它慢了 20ms，但再也没有人需要改四个地方。"
+        },
+        {
+          "id": "patch",
+          "label": "继续打补丁",
+          "hint": "这个季度能交付，代价是一笔会自己长大的债。",
+          "preview": [
+            "产品满意度 +2",
+            "新增技术债：遗留补丁",
+            "本周行动力 -1"
+          ],
+          "effects": [
+            {
+              "type": "satisfaction",
+              "value": 2
+            },
+            {
+              "type": "spawn_debt",
+              "debt_id": "legacy_patch",
+              "category": "arch",
+              "severity": 3.5,
+              "growth": 0.03,
+              "name": "层层补丁的订单服务"
+            },
+            {
+              "type": "ap",
+              "value": -1
+            }
+          ],
+          "reply": "补丁上线了。老陈在提交信息里写：「临时方案，勿删。」这是第三次。"
+        },
+        {
+          "id": "observe",
+          "label": "先加监控，量化慢在哪",
+          "hint": "花小钱买信息，把决定推迟到有数据的时候。",
+          "preview": [
+            "现金 -¥5,000",
+            "运维技能 +2",
+            "主管信任 +1"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": -500000
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 2
+              }
+            },
+            {
+              "type": "trust",
+              "value": 1
+            }
+          ],
+          "reply": "火焰图显示 60% 的时间花在序列化上，不是数据库。重写的方案被你们自己否掉了。"
+        }
+      ]
+    },
+    {
+      "id": "D10_share",
+      "name": "要不要做一次分享",
+      "tag": "team",
+      "art": "team",
+      "speaker": "周明远 · 技术负责人",
+      "decision": true,
+      "root": false,
+      "priority": 2,
+      "cooldown_weeks": 8,
+      "max_per_game": 2,
+      "chance": 0.4,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 13
+          }
+        ]
+      },
+      "narrative": "团队周会上，周明远提了一句：「最近大家踩了不少坑，有没有人愿意讲讲？」\n会议室安静了几秒。你手里正好有一份没整理完的复盘。\n讲，要花半天准备；不讲，这些坑下个月还会有人再踩一遍。",
+      "stakes": "知识留在一个人脑子里，团队就永远只有一个人能救火。",
+      "default": "write",
+      "choices": [
+        {
+          "id": "share",
+          "label": "讲，整理成内部分享",
+          "hint": "花半天时间，换团队记忆和信任。",
+          "preview": [
+            "本周行动力 -1",
+            "主管信任 +4",
+            "运维技能 +2"
+          ],
+          "effects": [
+            {
+              "type": "ap",
+              "value": -1
+            },
+            {
+              "type": "trust",
+              "value": 4
+            },
+            {
+              "type": "skill",
+              "skills": {
+                "ops": 2
+              }
+            },
+            {
+              "type": "docs",
+              "value": 1
+            }
+          ],
+          "reply": "分享讲了四十分钟，超时了。会后有人来问你要 PPT。"
+        },
+        {
+          "id": "skip",
+          "label": "不讲，先把手上的事做完",
+          "hint": "省下时间，但工单会继续涨。",
+          "preview": [
+            "客服工单 +5",
+            "主管信任 -1"
+          ],
+          "effects": [
+            {
+              "type": "tickets",
+              "value": 5
+            },
+            {
+              "type": "trust",
+              "value": -1
+            }
+          ],
+          "reply": "会议在沉默中结束。下个月，同一个坑被另一组人踩了一遍。"
+        },
+        {
+          "id": "write",
+          "label": "写成文档发群里",
+          "hint": "不占会议时间，把知识留在可检索的地方。",
+          "preview": [
+            "文档 +1",
+            "主管信任 +2"
+          ],
+          "effects": [
+            {
+              "type": "docs",
+              "value": 1
+            },
+            {
+              "type": "trust",
+              "value": 2
+            }
+          ],
+          "reply": "文档发出去后，被转进了三个群。有人回复：「早看到就好了。」"
+        }
+      ]
+    },
+    {
+      "id": "D11_budget_cut",
+      "name": "预算被砍了",
+      "tag": "finance",
+      "art": "finance",
+      "speaker": "财务 · 王姐",
+      "decision": true,
+      "root": false,
+      "priority": 3,
+      "cooldown_weeks": 99,
+      "max_per_game": 1,
+      "chance": 0.6,
+      "when": {
+        "all": [
+          {
+            "metric": "week",
+            "op": "gte",
+            "value": 15
+          },
+          {
+            "metric": "cash",
+            "op": "lte",
+            "value": 200000
+          }
+        ]
+      },
+      "narrative": "财务发来邮件：下季度云资源预算削减 30%。\n「不影响核心业务。」邮件里写。\n你看着那台还空着一半的只读副本，和每月固定支出的监控账单。",
+      "stakes": "成本削减从来不是「不影响核心业务」，只是把影响推迟到下个季度。",
+      "default": "pushback",
+      "choices": [
+        {
+          "id": "cut_replica",
+          "label": "下线一台只读副本",
+          "hint": "立刻省钱，主库 IO 会回来。",
+          "preview": [
+            "现金 +¥8,000",
+            "只读副本 -1",
+            "主管信任 +1",
+            "每周行动力 +2（少维护一台）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": 800000
+            },
+            {
+              "type": "replicas",
+              "value": -1
+            },
+            {
+              "type": "trust",
+              "value": 1
+            },
+            {
+              "type": "ap_bonus",
+              "value": 2
+            }
+          ],
+          "reply": "副本下线后，主库 IO 从 42% 涨回了 61%。还在安全线内。"
+        },
+        {
+          "id": "cut_monitor",
+          "label": "关掉部分监控",
+          "hint": "省小钱，把可观测性换成盲区。",
+          "preview": [
+            "现金 +¥4,000",
+            "错误率略微上升",
+            "未来三周行动力 -3（盲区要人盯）"
+          ],
+          "effects": [
+            {
+              "type": "cash",
+              "value": 400000
+            },
+            {
+              "type": "error_add",
+              "value": 0.01
+            },
+            {
+              "type": "flag",
+              "flag": "monitoring_reduced"
+            },
+            {
+              "type": "ap_temp",
+              "value": -3,
+              "weeks": 3
+            }
+          ],
+          "reply": "监控面板少了三块。第二天，没有人发现一条慢查询正在变慢。"
+        },
+        {
+          "id": "pushback",
+          "label": "拿数据去争",
+          "hint": "可能保住预算，也可能只是让财务记住你。",
+          "preview": [
+            "主管信任 -1",
+            "保住当前容量"
+          ],
+          "effects": [
+            {
+              "type": "trust",
+              "value": -1
+            },
+            {
+              "type": "flag",
+              "flag": "budget_defended"
+            }
+          ],
+          "reply": "你把容量曲线和事故成本放在一页纸上。王姐说：「我再和上面说说。」"
+        }
+      ]
+    },
+    {
+      "id": "M01_dashboard_degrade",
+      "name": "大屏越来越慢",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "运营 · 小周",
+      "narrative": "运营群里又炸了。大屏转圈转了十几秒，最后吐出一片空白。\n小周连发了三个问号，然后 @ 了你。老板站在会议室门口，手里拿着手机。",
+      "stakes": "刷新一次要十几秒，业务接口也跟着变慢。没人告诉你为什么。",
+      "clues": [
+        "监控里 q_dashboard 的 p95 从 320ms 涨到 1.8s，占大屏等待时间七成以上。",
+        "把这条 SQL 放进实验库看执行计划：SCAN orders，约 20 万行。",
+        "它的 WHERE 写成 DATE(created_at) = CURDATE()，谓词列被函数包住了。",
+        "同事提醒：这种情况下光在 created_at 上建索引，执行计划不会变。"
+      ],
+      "persist": {
+        "p95_add": 900,
+        "error_add": 0.004,
+        "trust": -0.4,
+        "tickets": 8
+      },
+      "resolve": {
+        "kind": "rewrite",
+        "query": "q_dashboard"
+      },
+      "trigger_week": 4,
+      "max_per_game": 1,
+      "major": true
+    },
+    {
+      "id": "M02_duplicate_callback",
+      "name": "同一笔订单发了两次货",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "客服 · 阿琳",
+      "narrative": "客服转来三张工单：同一个用户、同一笔订单，收到了两个包裹。\n财务问这次赔付记在谁的账上。",
+      "stakes": "错误率在涨，工单在堆，赔付从预算里出。",
+      "clues": [
+        "这三笔订单的支付流水里，同一个 order_id 各出现了两次。",
+        "支付渠道在超时后会重推回调，重试间隔不固定。",
+        "代码里处理回调的函数没有任何「已经处理过」的判定。",
+        "内部回归用例里有一组重复回调，专门用来验这个分支。"
+      ],
+      "persist": {
+        "error_add": 0.012,
+        "p95_add": 120,
+        "trust": -0.5,
+        "tickets": 20
+      },
+      "resolve": {
+        "kind": "fix",
+        "case_id": "ex_fn_idempo"
+      },
+      "trigger_week": 12,
+      "max_per_game": 1,
+      "major": true
+    },
+    {
+      "id": "M03_spike_collapse",
+      "name": "流量尖峰打穿了核心链路",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "值班 · 老陈",
+      "narrative": "一次小活动把流量顶到平时的三倍。核心接口没有直接挂，但开始一串串超时。\n老陈说：不是扛不住，是扛不住的时候没有一个人先退一步。",
+      "stakes": "尖峰一来就雪崩，恢复要十几分钟。",
+      "clues": [
+        "尖峰期间错误率不是缓慢上升，是几分钟内跳到 20% 以上。",
+        "超时请求把连接池占满，后续正常请求也排不进来了。",
+        "没有任何一处会在压力过大时主动拒绝一部分请求。",
+        "基础设施清单里有一项「限流与熔断」，还没有部署。"
+      ],
+      "persist": {
+        "p95_add": 600,
+        "error_add": 0.02,
+        "trust": -0.6,
+        "tickets": 15
+      },
+      "resolve": {
+        "kind": "facility",
+        "key": "circuit_breaker"
+      },
+      "trigger_week": 20,
+      "max_per_game": 1,
+      "major": true
+    },
+    {
+      "id": "M04_my_orders_slow",
+      "name": "「我的订单」翻页越来越卡",
+      "tag": "fault",
+      "art": "fault",
+      "speaker": "产品 · 赵磊",
+      "narrative": "赵磊拿手机给你看：用户翻到第 3 页就要等三四秒。\n「上一版没这么慢，是不是数据涨了？」你没接话。",
+      "stakes": "用户投诉集中在订单列表，翻页越深越慢。",
+      "clues": [
+        "q_my_orders 的耗时随订单表行数一起涨，几乎是线性的。",
+        "实验库里这条查询的执行计划是 SCAN orders，没有可用的索引。",
+        "它按 user_id 过滤，再按 created_at 排序取前 20 条。",
+        "索引的列顺序会影响执行计划；建完记得再看一次 EXPLAIN。"
+      ],
+      "persist": {
+        "p95_add": 480,
+        "error_add": 0.006,
+        "trust": -0.4,
+        "tickets": 10
+      },
+      "resolve": {
+        "kind": "index_effective",
+        "query": "q_my_orders"
+      },
+      "trigger_week": 30,
+      "max_per_game": 1,
+      "major": true
     }
-   ]
-  },
-  {
-   "id": "D03_cloud",
-   "name": "上不上云",
-   "tag": "finance",
-   "art": "finance",
-   "speaker": "CTO · 王总",
-   "decision": true,
-   "root": false,
-   "priority": 2,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.45,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 8
-     },
-     {
-      "metric": "cash",
-      "op": "gte",
-      "value": 200000
-     }
-    ]
-   },
-   "narrative": "云厂商的销售第三次来公司，带了一页 ROI 测算。\n自建机房今年续约，报价涨了 40%。但迁移意味着至少两周双跑，以及一次没人敢保证的成功率。\n王总说：「你评估，我签字。」",
-   "stakes": "上云是长期成本结构的改变，不是一次技术选型。",
-   "default": "hold",
-   "choices": [
-    {
-     "id": "cloud",
-     "label": "整体上云",
-     "hint": "一次性迁移成本高，但弹性扩容从此不用等采购。",
-     "preview": [
-      "现金 -¥60,000",
-      "运维技能 +5",
-      "主管信任 +3",
-      "每周行动力 +3（托管省下的运维时间）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -6000000
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 5
-       }
-      },
-      {
-       "type": "trust",
-       "value": 3
-      },
-      {
-       "type": "flag",
-       "flag": "on_cloud"
-      },
-      {
-       "type": "ap_bonus",
-       "value": 3
-      }
-     ],
-     "reply": "迁移在第二个周末完成。周一早上，你第一次不用先看机房温度。"
-    },
-    {
-     "id": "expand",
-     "label": "自建扩容",
-     "hint": "便宜、可控，但扩容周期仍然是按周算。",
-     "preview": [
-      "现金 -¥25,000",
-      "应用服务器 +2",
-      "主管信任 +1",
-      "未来两周行动力 -3"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -2500000
-      },
-      {
-       "type": "servers",
-       "value": 2
-      },
-      {
-       "type": "trust",
-       "value": 1
-      },
-      {
-       "type": "ap_temp",
-       "value": -3,
-       "weeks": 2
-      }
-     ],
-     "reply": "两台新机器上架。采购单上写着「预计下批次到货」，你把这句话记在了心里。"
-    },
-    {
-     "id": "hold",
-     "label": "维持现状",
-     "hint": "省下现金，但容量缺口会以事故的形式回来。",
-     "preview": [
-      "主管信任 -3",
-      "新增技术债：容量不足"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -3
-      },
-      {
-       "type": "spawn_debt",
-       "debt_id": "no_capacity",
-       "category": "ops",
-       "severity": 2.5,
-       "growth": 0.02,
-       "name": "容量没有余量"
-      }
-     ],
-     "reply": "王总点了点头。销售的名片被你夹进了一本不会翻开的笔记本。"
-    }
-   ]
-  },
-  {
-   "id": "D04_night_alert",
-   "name": "凌晨三点的告警",
-   "tag": "fault",
-   "art": "fault",
-   "speaker": "值班手机",
-   "decision": true,
-   "root": false,
-   "priority": 2,
-   "cooldown_weeks": 5,
-   "max_per_game": 2,
-   "chance": 0.5,
-   "when": {
-    "all": [
-     {
-      "metric": "error_rate",
-      "op": "gte",
-      "value": 0.02
-     }
-    ]
-   },
-   "narrative": "手机在 3:07 震动。错误率从 0.3% 跳到 4%，持续了 11 分钟，然后自己好了。\n你翻日志，只看到一堆超时。没有根因，也没有人报障。\n你可以现在叫醒所有人排查，也可以先记下来，等天亮。",
-   "stakes": "没有根因的故障会再来一次，而且第二次通常更贵。",
-   "default": "note",
-   "choices": [
-    {
-     "id": "wake",
-     "label": "叫醒老陈，一起排查",
-     "hint": "付出信任与人情，换来一个可能被提前掐掉的隐患。",
-     "preview": [
-      "现金 -¥3,000",
-      "运维技能 +3",
-      "主管信任 -2",
-      "本周行动力 -4（通宵的代价）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -300000
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 3
-       }
-      },
-      {
-       "type": "trust",
-       "value": -2
-      },
-      {
-       "type": "resolve_debt",
-       "debt_id": "no_monitoring"
-      },
-      {
-       "type": "ap",
-       "value": -4
-      }
-     ],
-     "reply": "你们在 4:40 找到了一条慢查询。它不在监控面板上，因为它太慢了，慢到超时都没记录。"
-    },
-    {
-     "id": "throttle",
-     "label": "先加一条限流规则兜住",
-     "hint": "不找根因，先限制爆炸半径。代价是少量用户被拒绝。",
-     "preview": [
-      "现金 -¥1,500",
-      "客服工单 +10"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -150000
-      },
-      {
-       "type": "tickets",
-       "value": 10
-      },
-      {
-       "type": "flag",
-       "flag": "throttled"
-      }
-     ],
-     "reply": "限流规则生效后，错误率回到了 0.2%。但那 11 分钟仍然没有解释。"
-    },
-    {
-     "id": "note",
-     "label": "记一笔，天亮再说",
-     "hint": "什么都不做。下周可能再抖一次。",
-     "preview": [
-      "下周错误率略微上升",
-      "主管信任 -1"
-     ],
-     "effects": [
-      {
-       "type": "error_add",
-       "value": 0.02
-      },
-      {
-       "type": "trust",
-       "value": -1
-      }
-     ],
-     "reply": "你在值班日志里写了一行，然后躺下。天花板很白。"
-    }
-   ]
-  },
-  {
-   "id": "D05_promo_budget",
-   "name": "大促前一周",
-   "tag": "business",
-   "art": "business",
-   "speaker": "周明远 · 技术负责人",
-   "decision": true,
-   "root": false,
-   "priority": 4,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.95,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "eq",
-      "value": 11
-     }
-    ]
-   },
-   "narrative": "双十一的排期已经发到全员群。运营预估峰值是平时的 2.2 倍。\n财务批了一笔临时预算，但只够做一件事：扩机器、加缓存，或者做一次完整的压测。\n「三选一，」周明远说，「别告诉我三个都要。」",
-   "stakes": "大促只看结果。选错不是花钱的问题，是两天里能不能开门的问题。",
-   "default": "drill",
-   "choices": [
-    {
-     "id": "scale",
-     "label": "扩容三台应用服务器",
-     "hint": "直接抬高应用层并发上限，对付排队最有效。",
-     "preview": [
-      "现金 -¥25,000",
-      "应用服务器 +3",
-      "大促准备完成"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -2500000
-      },
-      {
-       "type": "servers",
-       "value": 3
-      },
-      {
-       "type": "flag",
-       "flag": "promo_prepared"
-      }
-     ],
-     "reply": "三台机器在周三前就绪。你看着容量曲线，心里稍微踏实了一点。"
-    },
-    {
-     "id": "cache",
-     "label": "加缓存并预热",
-     "hint": "把读流量挡在数据库外面，但一致性窗口会变长。",
-     "preview": [
-      "现金 -¥12,000",
-      "大促准备完成",
-      "新增缓存一致性风险"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -1200000
-      },
-      {
-       "type": "flag",
-       "flag": "promo_prepared"
-      },
-      {
-       "type": "spawn_debt",
-       "debt_id": "cache_warm_risk",
-       "category": "arch",
-       "severity": 1.5,
-       "growth": 0.01,
-       "name": "预热缓存的失效路径未审计"
-      }
-     ],
-     "reply": "预热脚本跑了四十分钟。峰值到来时，数据库 QPS 只有平时的 1.3 倍。"
-    },
-    {
-     "id": "drill",
-     "label": "做一次完整压测",
-     "hint": "不买容量，买的是「知道瓶颈在哪」。",
-     "preview": [
-      "现金 -¥8,000",
-      "运维技能 +3",
-      "大促准备完成",
-      "本周行动力 -3"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -800000
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 3
-       }
-      },
-      {
-       "type": "flag",
-       "flag": "promo_prepared"
-      },
-      {
-       "type": "ap",
-       "value": -3
-      }
-     ],
-     "reply": "压测把连接池先打满了。你在周三就知道了这件事，而不是在双十一当天。"
-    }
-   ]
-  },
-  {
-   "id": "D06_poach",
-   "name": "猎头的电话",
-   "tag": "team",
-   "art": "team",
-   "speaker": "陌生号码",
-   "decision": true,
-   "root": false,
-   "priority": 2,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.4,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 10
-     },
-     {
-      "metric": "trust",
-      "op": "lte",
-      "value": 58
-     }
-    ]
-   },
-   "narrative": "一个陌生号码打来，说有个岗位，薪资上浮 40%，做的是你熟悉的方向。\n「不用现在答复，」对方说，「但下周他们就要定人。」\n你把手机扣在桌上，屏幕还亮着。",
-   "stakes": "这不是忠诚测试。留下或离开，都会改变你在这家公司里的位置。",
-   "default": "stay",
-   "choices": [
-    {
-     "id": "interview",
-     "label": "去聊一次，不承诺",
-     "hint": "你会知道自己的市场价，但消息传出去，信任会掉。",
-     "preview": [
-      "主管信任 -5",
-      "解锁「面试」状态"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -5
-      },
-      {
-       "type": "flag",
-       "flag": "interviewed"
-      }
-     ],
-     "reply": "对面开出的条件比电话里说的更好。你走出写字楼时，天已经黑了。"
-    },
-    {
-     "id": "stay",
-     "label": "回绝，把事做完",
-     "hint": "信任和满意度都会涨一点。你放弃了一次议价机会。",
-     "preview": [
-      "主管信任 +3",
-      "产品满意度 +2"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": 3
-      },
-      {
-       "type": "satisfaction",
-       "value": 2
-      }
-     ],
-     "reply": "你回了「暂时不考虑」。第二天，周明远把核心链路的改造交给了你。"
-    },
-    {
-     "id": "negotiate",
-     "label": "拿这个 offer 去谈条件",
-     "hint": "能换来一次性现金，但会留下「他在看机会」的印象。",
-     "preview": [
-      "现金 +¥15,000",
-      "主管信任 -1"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": 1500000
-      },
-      {
-       "type": "trust",
-       "value": -1
-      },
-      {
-       "type": "flag",
-       "flag": "negotiated"
-      }
-     ],
-     "reply": "加薪批了，附带一句「今年不会再有了」。你把它当成承诺，也当成提醒。"
-    }
-   ]
-  },
-  {
-   "id": "D07_incident_report",
-   "name": "事故报告怎么写",
-   "tag": "team",
-   "art": "fault",
-   "speaker": "周明远 · 技术负责人",
-   "decision": true,
-   "root": false,
-   "priority": 3,
-   "cooldown_weeks": 8,
-   "max_per_game": 2,
-   "chance": 0.55,
-   "when": {
-    "all": [
-     {
-      "metric": "error_rate",
-      "op": "gte",
-      "value": 0.05
-     }
-    ]
-   },
-   "narrative": "这次事故影响了两万用户，四十分钟。\n周明远要一份对外说明。他说：「实事求是，但也要考虑客户情绪。」\n你知道「考虑情绪」这四个字可以有很多种写法。",
-   "stakes": "报告会被存档。半年后有人翻出来时，它代表你对这件事的态度。",
-   "default": "honest",
-   "choices": [
-    {
-     "id": "honest",
-     "label": "如实写，包括我们的失误",
-     "hint": "短期信任受损，但团队会知道复盘是安全的。",
-     "preview": [
-      "主管信任 -6",
-      "产品满意度 +3",
-      "运维技能 +2"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -6
-      },
-      {
-       "type": "satisfaction",
-       "value": 3
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 2
-       }
-      }
-     ],
-     "reply": "报告发出去后，两个客户回了邮件，说谢谢你们讲清楚。"
-    },
-    {
-     "id": "soften",
-     "label": "淡化处理，强调已修复",
-     "hint": "外面好看，里面留下一个没人愿意再提的坑。",
-     "preview": [
-      "主管信任 +2",
-      "产品满意度 -2"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": 2
-      },
-      {
-       "type": "satisfaction",
-       "value": -2
-      },
-      {
-       "type": "flag",
-       "flag": "hidden_risk"
-      }
-     ],
-     "reply": "说明发出去后，群里安静了。老陈把复盘文档的权限改成了「仅自己可见」。"
-    },
-    {
-     "id": "blame",
-     "label": "把一部分原因归给云厂商",
-     "hint": "能转移注意力，但懂行的人会看出来。",
-     "preview": [
-      "主管信任 -2",
-      "产品满意度 -4"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -2
-      },
-      {
-       "type": "satisfaction",
-       "value": -4
-      }
-     ],
-     "reply": "云厂商的客户成功经理在群里发了一份时间线。时间线和你的报告有一处对不上。"
-    }
-   ]
-  },
-  {
-   "id": "D08_mentor",
-   "name": "带一个新人",
-   "tag": "team",
-   "art": "team",
-   "speaker": "HR · 张姐",
-   "decision": true,
-   "root": false,
-   "priority": 2,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.45,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 9
-     },
-     {
-      "metric": "trust",
-      "op": "gte",
-      "value": 55
-     }
-    ]
-   },
-   "narrative": "HR 把一个实习生领到你工位旁。\n「跟着你学两周，」她说，「不用特别安排，让他看看真实的工作就行。」\n你想起自己刚入职时，没人有空管你。",
-   "stakes": "带人要花时间，而不带人的团队会在半年后开始还这笔账。",
-   "default": "shadow",
-   "choices": [
-    {
-     "id": "teach",
-     "label": "认真带两周",
-     "hint": "本周少 1 点行动力，换来团队能力与信任。",
-     "preview": [
-      "本周行动力 -1",
-      "后端技能 +2",
-      "主管信任 +5"
-     ],
-     "effects": [
-      {
-       "type": "ap",
-       "value": -1
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "backend": 2
-       }
-      },
-      {
-       "type": "trust",
-       "value": 5
-      }
-     ],
-     "reply": "第二周，他独立修掉了一个空指针。你在 code review 里写了「不错」。"
-    },
-    {
-     "id": "shadow",
-     "label": "让他自己看文档",
-     "hint": "不占你的时间，但他大概率学不到真正的东西。",
-     "preview": [
-      "主管信任 -1"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -1
-      }
-     ],
-     "reply": "两周后他走了。HR 说，实习反馈里只有一句「文档比较全」。"
-    },
-    {
-     "id": "task",
-     "label": "直接给一个小任务",
-     "hint": "边做边学，你会收到一些工单。",
-     "preview": [
-      "客服工单 +5",
-      "主管信任 +2"
-     ],
-     "effects": [
-      {
-       "type": "tickets",
-       "value": 5
-      },
-      {
-       "type": "trust",
-       "value": 2
-      }
-     ],
-     "reply": "他改错了一个配置，测试环境挂了半天。但他记住了那次教训。"
-    }
-   ]
-  },
-  {
-   "id": "D09_rewrite",
-   "name": "要不要重写",
-   "tag": "business",
-   "art": "business",
-   "speaker": "老陈 · 资深工程师",
-   "decision": true,
-   "root": false,
-   "priority": 3,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.5,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 12
-     },
-     {
-      "metric": "p95_ms",
-      "op": "gte",
-      "value": 300
-     }
-    ]
-   },
-   "narrative": "订单服务的代码是三年前写的，现在每加一个字段要改四个地方。\n重写需要两个月，期间功能冻结；不重写，下个季度的需求会越堆越慢。\n老陈说：「我都能做。但我建议你想清楚，谁来维护第二版。」",
-   "stakes": "重写是这局里最贵的一次赌注。它可能救你，也可能只是换来一份更整齐的债。",
-   "default": "observe",
-   "choices": [
-    {
-     "id": "rewrite",
-     "label": "立项重写",
-     "hint": "花大钱换结构，但功能会停两个月。",
-     "preview": [
-      "现金 -¥40,000",
-      "后端技能 +5",
-      "主管信任 +2",
-      "本周行动力 -4"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -4000000
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "backend": 5
-       }
-      },
-      {
-       "type": "trust",
-       "value": 2
-      },
-      {
-       "type": "flag",
-       "flag": "rewrote_core"
-      },
-      {
-       "type": "ap",
-       "value": -4
-      }
-     ],
-     "reply": "重写的第一个版本在第六周上线。它慢了 20ms，但再也没有人需要改四个地方。"
-    },
-    {
-     "id": "patch",
-     "label": "继续打补丁",
-     "hint": "这个季度能交付，代价是一笔会自己长大的债。",
-     "preview": [
-      "产品满意度 +2",
-      "新增技术债：遗留补丁",
-      "本周行动力 -1"
-     ],
-     "effects": [
-      {
-       "type": "satisfaction",
-       "value": 2
-      },
-      {
-       "type": "spawn_debt",
-       "debt_id": "legacy_patch",
-       "category": "arch",
-       "severity": 3.5,
-       "growth": 0.03,
-       "name": "层层补丁的订单服务"
-      },
-      {
-       "type": "ap",
-       "value": -1
-      }
-     ],
-     "reply": "补丁上线了。老陈在提交信息里写：「临时方案，勿删。」这是第三次。"
-    },
-    {
-     "id": "observe",
-     "label": "先加监控，量化慢在哪",
-     "hint": "花小钱买信息，把决定推迟到有数据的时候。",
-     "preview": [
-      "现金 -¥5,000",
-      "运维技能 +2",
-      "主管信任 +1"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": -500000
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 2
-       }
-      },
-      {
-       "type": "trust",
-       "value": 1
-      }
-     ],
-     "reply": "火焰图显示 60% 的时间花在序列化上，不是数据库。重写的方案被你们自己否掉了。"
-    }
-   ]
-  },
-  {
-   "id": "D10_share",
-   "name": "要不要做一次分享",
-   "tag": "team",
-   "art": "team",
-   "speaker": "周明远 · 技术负责人",
-   "decision": true,
-   "root": false,
-   "priority": 2,
-   "cooldown_weeks": 8,
-   "max_per_game": 2,
-   "chance": 0.4,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 13
-     }
-    ]
-   },
-   "narrative": "团队周会上，周明远提了一句：「最近大家踩了不少坑，有没有人愿意讲讲？」\n会议室安静了几秒。你手里正好有一份没整理完的复盘。\n讲，要花半天准备；不讲，这些坑下个月还会有人再踩一遍。",
-   "stakes": "知识留在一个人脑子里，团队就永远只有一个人能救火。",
-   "default": "write",
-   "choices": [
-    {
-     "id": "share",
-     "label": "讲，整理成内部分享",
-     "hint": "花半天时间，换团队记忆和信任。",
-     "preview": [
-      "本周行动力 -1",
-      "主管信任 +4",
-      "运维技能 +2"
-     ],
-     "effects": [
-      {
-       "type": "ap",
-       "value": -1
-      },
-      {
-       "type": "trust",
-       "value": 4
-      },
-      {
-       "type": "skill",
-       "skills": {
-        "ops": 2
-       }
-      },
-      {
-       "type": "docs",
-       "value": 1
-      }
-     ],
-     "reply": "分享讲了四十分钟，超时了。会后有人来问你要 PPT。"
-    },
-    {
-     "id": "skip",
-     "label": "不讲，先把手上的事做完",
-     "hint": "省下时间，但工单会继续涨。",
-     "preview": [
-      "客服工单 +5",
-      "主管信任 -1"
-     ],
-     "effects": [
-      {
-       "type": "tickets",
-       "value": 5
-      },
-      {
-       "type": "trust",
-       "value": -1
-      }
-     ],
-     "reply": "会议在沉默中结束。下个月，同一个坑被另一组人踩了一遍。"
-    },
-    {
-     "id": "write",
-     "label": "写成文档发群里",
-     "hint": "不占会议时间，把知识留在可检索的地方。",
-     "preview": [
-      "文档 +1",
-      "主管信任 +2"
-     ],
-     "effects": [
-      {
-       "type": "docs",
-       "value": 1
-      },
-      {
-       "type": "trust",
-       "value": 2
-      }
-     ],
-     "reply": "文档发出去后，被转进了三个群。有人回复：「早看到就好了。」"
-    }
-   ]
-  },
-  {
-   "id": "D11_budget_cut",
-   "name": "预算被砍了",
-   "tag": "finance",
-   "art": "finance",
-   "speaker": "财务 · 王姐",
-   "decision": true,
-   "root": false,
-   "priority": 3,
-   "cooldown_weeks": 99,
-   "max_per_game": 1,
-   "chance": 0.6,
-   "when": {
-    "all": [
-     {
-      "metric": "week",
-      "op": "gte",
-      "value": 15
-     },
-     {
-      "metric": "cash",
-      "op": "lte",
-      "value": 200000
-     }
-    ]
-   },
-   "narrative": "财务发来邮件：下季度云资源预算削减 30%。\n「不影响核心业务。」邮件里写。\n你看着那台还空着一半的只读副本，和每月固定支出的监控账单。",
-   "stakes": "成本削减从来不是「不影响核心业务」，只是把影响推迟到下个季度。",
-   "default": "pushback",
-   "choices": [
-    {
-     "id": "cut_replica",
-     "label": "下线一台只读副本",
-     "hint": "立刻省钱，主库 IO 会回来。",
-     "preview": [
-      "现金 +¥8,000",
-      "只读副本 -1",
-      "主管信任 +1",
-      "每周行动力 +2（少维护一台）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": 800000
-      },
-      {
-       "type": "replicas",
-       "value": -1
-      },
-      {
-       "type": "trust",
-       "value": 1
-      },
-      {
-       "type": "ap_bonus",
-       "value": 2
-      }
-     ],
-     "reply": "副本下线后，主库 IO 从 42% 涨回了 61%。还在安全线内。"
-    },
-    {
-     "id": "cut_monitor",
-     "label": "关掉部分监控",
-     "hint": "省小钱，把可观测性换成盲区。",
-     "preview": [
-      "现金 +¥4,000",
-      "错误率略微上升",
-      "未来三周行动力 -3（盲区要人盯）"
-     ],
-     "effects": [
-      {
-       "type": "cash",
-       "value": 400000
-      },
-      {
-       "type": "error_add",
-       "value": 0.01
-      },
-      {
-       "type": "flag",
-       "flag": "monitoring_reduced"
-      },
-      {
-       "type": "ap_temp",
-       "value": -3,
-       "weeks": 3
-      }
-     ],
-     "reply": "监控面板少了三块。第二天，没有人发现一条慢查询正在变慢。"
-    },
-    {
-     "id": "pushback",
-     "label": "拿数据去争",
-     "hint": "可能保住预算，也可能只是让财务记住你。",
-     "preview": [
-      "主管信任 -1",
-      "保住当前容量"
-     ],
-     "effects": [
-      {
-       "type": "trust",
-       "value": -1
-      },
-      {
-       "type": "flag",
-       "flag": "budget_defended"
-      }
-     ],
-     "reply": "你把容量曲线和事故成本放在一页纸上。王姐说：「我再和上面说说。」"
-    }
-   ]
-  }
- ]
+  ]
 }

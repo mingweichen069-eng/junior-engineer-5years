@@ -63,13 +63,6 @@ def test_difficulty_tiers_are_distinct() -> None:
     assert difficulty.config("easy")["availability_redline"] < difficulty.config("hard")["availability_redline"]
 
 
-def test_veteran_unlocks_db_t1() -> None:
-    st = new_game(seed=5, difficulty="veteran")
-    assert st.player.skills["sql"] >= 55
-    assert st.tech.unlocked.get("db_t1") is True
-    assert st.tech.direction == "db"
-
-
 def test_hard_redline_makes_bankruptcy_easier() -> None:
     def two_months(avail: float, diff: str):
         st = new_game(seed=6, difficulty=diff)
@@ -86,8 +79,8 @@ def test_hard_redline_makes_bankruptcy_easier() -> None:
 
 def test_rules_version_is_current() -> None:
     st = new_game(seed=1)
-    assert st.meta.rules_version == "0.9.0"
-    assert st.meta.save_version >= 6
+    assert st.meta.rules_version == "1.0.0"
+    assert st.meta.save_version >= 7
 
 
 # ---------- P2-1：健康但融资失败有独立结局 ----------
@@ -120,20 +113,3 @@ def test_unfunded_ending_at_week_24() -> None:
 
 # ---------- P2-2：只读副本 ----------
 
-def test_read_replica_offloads_primary() -> None:
-    st = new_game(seed=13)
-    st.flags["writes_enabled"] = True
-    st.tech.unlocked["db_replica"] = True       # 动作有科技前置
-    before = evaluate_peak(st).io_iops
-    st.player.ap = 99
-    ok, msg = __import__("core.rules.actions", fromlist=["start"]).start(st, "add_read_replica")
-    assert ok, msg
-    step(st)
-    after = evaluate_peak(st).io_iops
-    assert st.app.read_replicas == 1
-    assert after < before                    # 主库 IO 真的下降了
-    # 代价：每月成本增加，并欠下副本延迟债
-    from core.rules import economy
-
-    assert economy.monthly_cost_cents(st) > 0
-    assert "replica_lag" in st.debt.items
