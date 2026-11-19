@@ -31,7 +31,10 @@
           "op": "non_sargable"
         }
       ],
-      "aggregate": true
+      "aggregate": true,
+      "rewriteable": true,
+      "index_column": "created_at",
+      "sql": "SELECT status, COUNT(*) AS cnt, SUM(amount) AS gmv FROM orders WHERE DATE(created_at) = '2023-11-02' GROUP BY status ORDER BY status"
     },
     {
       "id": "q_pending",

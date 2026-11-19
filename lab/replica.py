@@ -1,12 +1,20 @@
-"""SQLite 只读副本：给玩家一个真实可查询的数据库。
+"""SQLite 副本：给玩家一个真实可查询的数据库。
 
-副本与游戏世界同构（同样的表和分布），规模缩小到 20 万订单，
-用于验证访问路径，不参与生产数值。
+两套库各司其职，不要混为一谈：
+- ``replica.db``（20 万订单）：v0.9 遗留的 SQL 判题主库，供 exam.py 的 SQL 题
+  与 tools/scan_load_profile.py 使用；它预置了若干判题用索引，不是生产环境。
+- ``workbench.db``（LAB_ORDERS 行）：v1.0 起的工程工作台实验库，由 build_lab()
+  秒级重建。它的**初始索引严格来自 content/schema.json**，与生产模拟一致，
+  这样玩家在实验库里得到的结论才不会和生产对不上（v1.1.2 阶段四）。
+
+实验库只用来看访问路径与结果一致性，本机 SQLite 耗时不参与生产数值。
 """
 
 from __future__ import annotations
 
+import json
 import random
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "lab" / "replica.db"
 
 ORDERS = 200_000
+# 实验库规模：固定 4,000 行。够看清执行计划，又能秒级重置。
+# 如果哪天要换成 20 万行，只需改这里并在调用处显式传 orders_n。
+LAB_ORDERS = 4_000
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 USERS = 30_000
 ITEMS_PER_ORDER = 3
 PAYMENTS = ORDERS // 3
@@ -112,6 +124,25 @@ def build(path: Path | None = None) -> Path:
     return path
 
 
+def production_indexes() -> list[tuple[str, str, list[str]]]:
+    """生产模拟的初始索引，直接从 content/schema.json 读。
+
+    实验库必须只建这些索引：多建一个「玩家还没部署」的索引，就会让实验结论
+    与生产不符（v1.1.2 阶段四修掉的正是 idx_orders_user_created 这类预置索引）。
+    """
+    data = json.loads((ROOT / "content" / "schema.json").read_text(encoding="utf-8"))
+    out: list[tuple[str, str, list[str]]] = []
+    for table, spec in data["tables"].items():
+        for name, idx in (spec.get("indexes") or {}).items():
+            cols = list(idx.get("columns") or [])
+            if not all(_IDENT.match(x) for x in [name, table, *cols]):
+                raise ValueError(f"schema.json 里有非法索引标识符：{name}/{table}/{cols}")
+            out.append((name, table, cols))
+    return out
+
+
+# 判题主库（replica.db）的索引清单。它服务于历史 SQL 题库，不代表生产 schema；
+# 工程工作台的实验库走上面的 production_indexes()，不走这里。
 REQUIRED_INDEXES = {
     "idx_orders_created": ("orders", "created_at"),
     "idx_orders_user_created": ("orders", "user_id, created_at"),
@@ -121,11 +152,13 @@ REQUIRED_INDEXES = {
 }
 
 
-def build_lab(path: Path | None = None, orders_n: int = 4000) -> Path:
-    """实验库：与判题主库同构（同样的表 / 索引 / 分布），但只放几千行。
+def build_lab(path: Path | None = None, orders_n: int = LAB_ORDERS) -> Path:
+    """实验库：与生产初始 schema 一致，只放几千行以便秒级重置。
 
-    EXPLAIN QUERY PLAN 关心的是「索引在不在、谓词能不能命中」，与小表还是
-    20 万行无关。实验库要能被玩家反复重置，所以必须秒级重建。
+    表结构与 ``content/schema.json`` 同构，索引集合由 ``production_indexes()``
+    从同一份 schema 生成——不会预置生产里还不存在的索引。EXPLAIN QUERY PLAN
+    关心的是「索引在不在、谓词能不能命中」，与表是 4,000 行还是 120 万行无关；
+    但**耗时**会随规模变化，所以实验库耗时只能作本机参考，不能当生产指标。
     """
     path = path or DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,16 +206,11 @@ def build_lab(path: Path | None = None, orders_n: int = 4000) -> Path:
     conn.executemany("INSERT INTO orders VALUES(?,?,?,?,?)", orders)
     conn.executemany("INSERT INTO order_items VALUES(?,?,?,?,?)", items)
     conn.executemany("INSERT INTO payments VALUES(?,?,?,?)", payments)
-    conn.executescript(
-        """
-        CREATE INDEX idx_orders_created ON orders(created_at);
-        CREATE INDEX idx_orders_user_created ON orders(user_id, created_at);
-        CREATE INDEX idx_items_order ON order_items(order_id);
-        CREATE INDEX idx_payments_order ON payments(order_id);
-        CREATE INDEX idx_payments_created ON payments(created_at);
-        ANALYZE;
-        """
-    )
+    # 只建生产初始 schema 里真实存在的索引。玩家自己建的索引由实验台执行，
+    # 部署到生产的索引由 CompanyAssets 记录——实验库不会替玩家「先建好」。
+    for name, table, cols in production_indexes():
+        conn.execute(f"CREATE INDEX {name} ON {table}({', '.join(cols)})")
+    conn.execute("ANALYZE")
     conn.commit()
     conn.close()
     return path

@@ -102,9 +102,11 @@ class Player:
     # 临时加成（只持续到 ap_temp_until 这一周）
     ap_temp_bonus: int = 0
     ap_temp_until: int = 0
-    # 专业技能：动作门槛与考核用
+    # 工程经验（v1.1.2）：真实动手、实验、上线与复盘事故沉淀出来的判断力。
+    # 不是等级、不是解锁条件、不 gate 任何操作。它只影响：调查精力消耗、
+    # 生产变更的事故风险、以及职业绩效评价（见 workbench / career）。
     skills: dict[str, float] = field(default_factory=lambda: {"sql": 10.0, "db": 12.0, "backend": 20.0, "ops": 8.0})
-    # 通用计算机素养：由「计算机基础」轨道提供，决定跨线成本与部分节点门槛
+    # 通用素养的展示性记录（v0.9 遗留）：不参与门槛，也不独立影响任何模拟数值。
     traits: dict[str, float] = field(
         default_factory=lambda: {"arch": 0.0, "os": 0.0, "algo": 0.0, "net": 0.0, "conc": 0.0, "dist": 0.0}
     )
@@ -137,7 +139,7 @@ class ActionState:
     pending: list[PendingEffect] = field(default_factory=list)
     applied: dict[str, bool] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
-    # 本周实际执行的动作数：动作越多，下周自学精力回复越低（救火挤掉学习）。
+    # 本周实际执行的动作数：动作越多，下周调查精力回复越低（救火挤掉查问题）。
     actions_this_week: int = 0
     monitoring: bool = False
     backup: bool = False
@@ -261,7 +263,12 @@ class CompanyAssets:
     """
     indexes: list[DeployedIndex] = field(default_factory=list)
     facilities: dict[str, int] = field(default_factory=dict)  # replica / circuit_breaker / cache / monitoring ...
-    rewritten_queries: list[str] = field(default_factory=list)
+    rewritten_queries: list[str] = field(default_factory=list)  # 验证有效、真正影响模拟的改写 id
+    # v1.1.2：改写部署保存玩家真正提交的 SQL，而不是只记一个 rewritten=True 标志。
+    # rewrite_verified 由实验库里真实 EXPLAIN QUERY PLAN 判定；没用上索引的改写
+    # 也会留下 SQL 资产，但不会进入 rewritten_queries，因而不产生任何性能收益。
+    rewrite_sql: dict[str, str] = field(default_factory=dict)
+    rewrite_verified: dict[str, bool] = field(default_factory=dict)
     fixes: list[str] = field(default_factory=list)            # 已修复并部署的代码缺陷
     docs: int = 0
 

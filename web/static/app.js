@@ -128,7 +128,7 @@ const ACTION_RISK = {
   online_ddl: "多花行动力；临时磁盘膨胀",
   optimize_index: "重建期间占用 IO",
   archive_orders: "归档数据仍可查但变慢；建议先确认报表需求",
-  rewrite_pending: "只解决一条查询；需要科技「索引与执行计划」",
+  rewrite_pending: "只解决一条查询；先给这条查询配上合适的索引",
   cache_dashboard: "最多 30 秒脏读，并欠下缓存一致性债",
   audit_cache: "要花一周；期间缓存风险仍在",
   add_server: "只缓解应用层排队，对数据库无效；欠服务器蔓延债",
@@ -139,9 +139,9 @@ const ACTION_RISK = {
   expand_disk: "容量和 IOPS 一起加，但改变不了扫描行数",
   open_monitoring: "每月 ¥300，换来查明细的能力与事故抑噪",
   backup_daily: "平时看不出效果，直到真的丢数据",
-  circuit_breaker: "需要科技「服务治理」；对已经打满的数据库无效",
+  circuit_breaker: "对已经打满的数据库无效；只能防级联雪崩",
   write_docs: "信任加成递减（+2 → +1 → 0），别指望刷绩效",
-  rewrite_dashboard: "需要科技「查询改写」；只影响大屏这一条查询",
+  rewrite_dashboard: "只影响大屏这一条查询；工作台里还得自己写改写 SQL",
   automate_ops: "一次性投入 12 AP，两周后才生效",
 };
 
@@ -819,7 +819,7 @@ function renderHud() {
   if (mo) mo.textContent = `${cnNum(S.month)}月 · 第 ${cnNum(S.week_in_month)} 周`;
   if (meta) {
     const sk = S.skills || {};
-    meta.textContent = `${DIFF_LABEL[S.difficulty] || S.difficulty} · SQL ${num(sk.sql, 0)} / DB ${num(sk.db, 0)} / OPS ${num(sk.ops, 0)}`;
+    meta.textContent = `${DIFF_LABEL[S.difficulty] || S.difficulty} · 工程经验 SQL ${num(sk.sql, 0)} / DB ${num(sk.db, 0)} / OPS ${num(sk.ops, 0)}`;
   }
   if (status) {
     const tone = S.bottleneck && S.bottleneck.code !== "healthy" ? "warn" : "muted";
@@ -1286,6 +1286,8 @@ function panelTech() {
 let wbSql = "SELECT * FROM orders WHERE user_id = 1 LIMIT 20";
 let wbFixCode = "";
 let wbFixCase = "";
+let wbRewriteSql = "";
+let wbRewriteCase = "";
 let wbResult = null;
 
 function majorCard(m) {
@@ -1331,11 +1333,24 @@ function renderWbResult() {
           · 隐藏 ${num((d.hidden || {}).passed || 0, 0)}/${num((d.hidden || {}).total || 0, 0)}
           ${(d.hidden || {}).failed ? ` · 隐藏第 ${num(d.hidden.failed, 0)} 例未过（输入不公开）` : ""}</div>`
       : ""}
-    ${d.row_count != null ? `<div class="muted">返回 ${d.row_count} 行 · ${num(d.elapsed_ms || 0, 1)} ms</div>` : ""}
+    ${d.row_count != null ? `<div class="muted">返回 ${d.row_count} 行 · 实验库耗时 ${num(d.elapsed_ms || 0, 1)} ms（本机参考，非生产性能指标）</div>` : ""}
+    ${d.rewrite_check
+      ? `<div class="wb-compare"><b>改写对比（两份 SQL 都在实验库里真跑过）</b>
+          <div>结果一致：${d.rewrite_check.rows_equal ? "是" : "否"} · 执行计划用上目标索引：${d.rewrite_check.verified ? "是" : "否"}</div>
+          ${["original", "submitted"].map((k) => {
+            const v = (d.rewrite_check || {})[k] || {};
+            const lines = (v.plan || []).map((p) => `<div class="${planClass(p.detail)}">${esc(p.detail)}</div>`).join("");
+            return `<div class="wb-compare-col"><span>${k === "original" ? "原始查询" : "你提交的 SQL"}</span>
+              ${lines || `<div class="muted">${esc(v.error || "无执行计划")}</div>`}
+              <small>返回 ${num(v.row_count || 0, 0)} 行 · 实验库 ${num(v.lab_elapsed_ms || 0, 1)} ms（不是生产性能指标）</small>
+            </div>`;
+          }).join("")}
+        </div>`
+      : ""}
     ${d.cost
       ? `<div class="wb-cost"><b>这次变更的代价</b>
           <div>行动力 −${num(d.cost.ap, 0)} · 调查精力 −${num(d.cost.energy, 0)} · 占用本周一个发布窗口（下周 p95 抖动 ${num(d.change_window_ms || 0, 0)} ms）</div>
-          ${d.risk ? `<div>事故概率 ${num(d.risk.total * 100, 0)}%：基础 ${num(d.risk.base * 100, 0)}% ＋ 未经实验 ${num(d.risk.untested * 100, 0)}% ＋ 本周连续变更 ${num(d.risk.consecutive * 100, 0)}%${d.risk.verified ? " · 已在实验库验证过" : " · 尚未在实验库验证"}</div>` : ""}
+          ${d.risk ? `<div>事故概率 ${num(d.risk.total * 100, 0)}%：基础 ${num(d.risk.base * 100, 0)}%（工程经验已折减 ${num((1 - (d.risk.experience_factor || 1)) * 100, 0)}%） ＋ 未经实验 ${num(d.risk.untested * 100, 0)}% ＋ 本周连续变更 ${num(d.risk.consecutive * 100, 0)}%${d.risk.verified ? " · 已在实验库验证过" : " · 尚未在实验库验证"}</div>` : ""}
         </div>`
       : ""}
     ${d.incident
@@ -1351,8 +1366,12 @@ function panelWorkbench() {
   const slow = S.slow_queries || [];
   const assets = S.assets || { indexes: [], facilities: {}, rewritten_queries: [], fixes: [] };
   const cases = S.cases || [];
+  const rewrites = S.rewrite_queries || [];
   const costs = S.deploy_costs || {};
   const lab = S.lab || { experiments: 0, deployments: 0, changes_this_week: 0, incidents: 0 };
+  if (!wbRewriteCase && rewrites.length) wbRewriteCase = rewrites[0].id;
+  const rw = rewrites.find((x) => x.id === wbRewriteCase) || rewrites[0] || {};
+  if (!wbRewriteSql && rw.deployed_sql) wbRewriteSql = rw.deployed_sql;
   const assetCount = (assets.indexes || []).length + (assets.rewritten_queries || []).length
     + (assets.fixes || []).length + Object.keys(assets.facilities || {}).length;
   if (!wbFixCase && cases.length) wbFixCase = cases[0].id;
@@ -1391,12 +1410,37 @@ function panelWorkbench() {
           <div class="wb-qrow"><span>可索引列</span><em>${esc((q.indexable_columns || []).join(", ") || "无")}</em></div>
           <div class="wb-qrow"><span>已有索引</span><em>${esc((q.helping_indexes || []).join(", ") || "无")}</em></div>
           <div class="wb-hint">${esc(q.hint)}</div>
-          ${!q.rewritten && q.id === "q_dashboard"
-            ? `<button data-wb-rewrite="${esc(q.id)}">把 DATE() 改成区间条件</button>` : ""}
         </div>`)
         .join("")}</div>
     </section>
-    <section class="card"><h3>SQL 实验库 <span class="right">真实 SQLite · 20 万行副本</span></h3>
+    <section class="card"><h3>查询改写：提交你自己的 SQL <span class="right">没有预设答案按钮</span></h3>
+      <p class="ins-note" style="margin-top:0">运营大屏按天聚合，WHERE 里用 DATE(created_at) 把列包住了，
+      created_at 索引因此用不上。系统只给原始 SQL、实验库和监控线索，<b>改写由你自己写</b>：
+      两份查询都会在实验库里真跑，结果必须一致，执行计划必须真的用上索引，生产才会变快。</p>
+      ${rewrites.length ? `
+        <div class="wb-rewrite-grid">
+          <div class="wb-sql-block"><span>原始查询（只读）</span>
+            <pre>${esc(rw.original_sql || "")}</pre>
+            <small>目标索引列：${esc(rw.index_column || "—")}</small>
+          </div>
+          <div class="wb-sql-block"><span>你写的改写 SQL</span>
+            <textarea id="wb-rewrite-sql" class="wb-code" spellcheck="false"
+              oninput="wbRewriteSql=this.value">${esc(wbRewriteSql)}</textarea>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button data-wb-check-rewrite="${esc(rw.id)}">在实验库对比验证</button>
+          <button data-wb-deploy-rewrite="${esc(rw.id)}" class="primary">部署到生产</button>
+        </div>
+        <div class="ins-note">${rw.deployed_sql
+          ? `已部署的 SQL 资产：<code class="rw-code">${esc(rw.deployed_sql)}</code> ·
+             ${rw.verified ? "执行计划已用上索引，生产查询确实变快" : "没用上索引，只有写法变化、没有性能收益"}`
+          : "还没有部署任何改写 SQL。写错了照样可以上线，只是结果不一致会被拦下，且失败也要付勘察成本。"}</div>
+        <p class="wb-hidden-note">实验库只是生产 schema 的轻量副本，这里的毫秒数不能当作生产性能指标；
+        生产收益由执行计划是否真的命中索引决定。</p>`
+        : '<div class="banner info">当前没有开放改写的查询。</div>'}
+    </section>
+    <section class="card"><h3>SQL 实验库 <span class="right">真实 SQLite · 4,000 行轻量副本</span></h3>
       <p class="ins-note" style="margin-top:0">写 SELECT 看执行计划，写 CREATE INDEX 真的在实验库里建一个再对比。
       建错了不会拦你，执行计划会如实告诉你没用上。</p>
       <textarea id="wb-sql" class="wb-code" spellcheck="false" oninput="wbSql=this.value">${esc(wbSql)}</textarea>
@@ -1438,6 +1482,11 @@ function panelWorkbench() {
         `<div class="asset-row"><b>${esc(i.name)}</b><span>${esc(i.table)}(${esc((i.columns || []).join(","))})</span>
          <em>${(i.effective_for || []).length ? "物理上帮到 " + esc((i.effective_for || []).join(",")) : "零收益，只有代价"}</em></div>`
       ).join("")}
+      ${Object.entries(assets.rewrite_sql || {}).map(([qid, text]) =>
+        `<div class="asset-row"><b>改写 SQL · ${esc(qid)}</b>
+         <span class="rw-code">${esc(text)}</span>
+         <em>${(assets.rewrite_verified || {})[qid] ? "已用上索引，生产生效" : "零收益，只有写法变化"}</em></div>`
+      ).join("")}
     </section>`;
 }
 
@@ -1474,8 +1523,20 @@ async function wbRun(kind) {
   }
 }
 
-async function wbRewrite(query) {
-  return wbFetch("/api/workbench/deploy-rewrite", { query }, "改写查询");
+function readRewriteSql() {
+  const ta = el("#wb-rewrite-sql");
+  if (ta) wbRewriteSql = ta.value;
+  return wbRewriteSql;
+}
+
+async function wbCheckRewrite(query) {
+  return wbFetch("/api/workbench/check-rewrite",
+    { query, sql: readRewriteSql() }, "改写对比验证");
+}
+
+async function wbDeployRewrite(query) {
+  return wbFetch("/api/workbench/deploy-rewrite",
+    { query, sql: readRewriteSql() }, "改写部署");
 }
 
 async function wbDeployFix() {
@@ -2264,8 +2325,10 @@ function bind() {
     if (tnode) return openTechModal(tnode.dataset.techNode);
     const wrun = pick("button[data-wb-run]");
     if (wrun) return wbRun(wrun.dataset.wbRun);
-    const wrw = pick("button[data-wb-rewrite]");
-    if (wrw) return wbRewrite(wrw.dataset.wbRewrite);
+    const wrcheck = pick("button[data-wb-check-rewrite]");
+    if (wrcheck) return wbCheckRewrite(wrcheck.dataset.wbCheckRewrite);
+    const wrdep = pick("button[data-wb-deploy-rewrite]");
+    if (wrdep) return wbDeployRewrite(wrdep.dataset.wbDeployRewrite);
     if (pick("button[data-wb-fix]")) return wbDeployFix();
     const wcase = pick("button[data-wb-case]");
     if (wcase) return wbSelectCase(wcase.dataset.wbCase);

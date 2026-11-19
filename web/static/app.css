@@ -1555,6 +1555,21 @@ textarea.wb-code:focus { outline: none; border-color: var(--gold-dim); }
 .wb-hidden-note { margin-top: 6px; font-size: 11px; color: var(--dim); line-height: 1.7; }
 .wb-hidden-note b { color: var(--gold-dim); }
 .wb-regression { margin-top: 8px; font-size: 11px; color: var(--dim); font-family: var(--mono); }
+/* v1.1.2 阶段三：查询改写的原始 SQL / 玩家 SQL 与两份执行计划对比 */
+.wb-rewrite-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 9px; }
+.wb-sql-block { padding: 9px 10px; border: 1px solid var(--line); background: rgba(0,0,0,.2); }
+.wb-sql-block > span { display: block; font-size: 11px; color: var(--gold-dim); margin-bottom: 6px; letter-spacing: .04em; }
+.wb-sql-block pre { margin: 0 0 6px; white-space: pre-wrap; word-break: break-word;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.7; color: var(--text); }
+.wb-sql-block small { font-size: 10.5px; color: var(--dim); }
+.wb-compare { margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--gold-dim);
+  background: rgba(255,255,255,.02); font-size: 11px; line-height: 1.7; }
+.wb-compare > b { color: var(--gold-dim); }
+.wb-compare-col { margin-top: 7px; padding-top: 6px; border-top: 1px dashed var(--line-soft); }
+.wb-compare-col > span { color: var(--dim); }
+.wb-compare-col small { display: block; color: var(--dim); font-family: var(--mono); font-size: 10px; }
+.rw-code { font-family: var(--mono); font-size: 10.5px; word-break: break-all; color: var(--text); }
+.asset-row .rw-code { flex: 1; }
 .asset-row { display: flex; gap: 10px; align-items: center; font-size: 11.5px; padding: 6px 0;
   border-bottom: 1px dashed var(--line-soft); }
 .asset-row b { flex: 0 0 110px; color: var(--text-strong); }

@@ -123,11 +123,14 @@ if (tech.includes("开始读条") || tech.includes("参加考核")) problems.pus
 const workbench = renderPanel("workbench");
 check("workbench", workbench, [
   "工程工作台", "监控 → 看执行计划", "没有读条、没有考核", "慢查询", "调查：慢查询与索引",
-  "SQL 实验库", "真实 SQLite", "看执行计划", "在实验库跑", "部署到生产", "重置实验库",
+  "SQL 实验库", "真实 SQLite", "4,000 行轻量副本", "看执行计划", "在实验库跑", "部署到生产", "重置实验库",
+  "查询改写：提交你自己的 SQL", "原始查询（只读）", "在实验库对比验证", "没有预设答案按钮",
   "生产回归用例", "跑回归并部署", "已部署到生产的资产", "公司资产",
 ]);
-if (!workbench.includes("wb-sql") || !workbench.includes("wb-fix"))
-  problems.push("workbench: SQL / 代码编辑器没渲染");
+if (!workbench.includes("wb-sql") || !workbench.includes("wb-fix") || !workbench.includes("wb-rewrite-sql"))
+  problems.push("workbench: SQL / 改写 / 代码编辑器没渲染");
+if (workbench.includes("把 DATE() 改成区间条件"))
+  problems.push("workbench: 还在用预设答案按钮替代玩家写 SQL");
 
 const know = renderPanel("knowledge");
 check("knowledge", know, ["内部知识库", "知识不是奖励", "全文开放", "kgroup", "kcard", "know-search", "记一笔"]);
@@ -245,7 +248,8 @@ const cases = [
   ["在实验库跑", { "data-wb-run": "experiment" }, "/api/workbench/experiment", ""],
   ["部署索引", { "data-wb-run": "deploy" }, "/api/workbench/deploy-index", ""],
   ["重置实验库", { "data-wb-run": "reset" }, "/api/workbench/reset-lab", ""],
-  ["改写查询", { "data-wb-rewrite": "q_dashboard" }, "/api/workbench/deploy-rewrite", ""],
+  ["改写对比验证", { "data-wb-check-rewrite": "q_dashboard" }, "/api/workbench/check-rewrite", ""],
+  ["改写部署", { "data-wb-deploy-rewrite": "q_dashboard" }, "/api/workbench/deploy-rewrite", ""],
   ["跑回归并部署", { "data-wb-fix": "1" }, "/api/workbench/deploy-fix", ""],
   ["选修复用例", { "data-wb-case": "ex_fn_idempo" }, null, ""],
   ["找同事咨询", { "data-wb-consult": "M01_dashboard_degrade" }, "/api/events/consult", ""],
@@ -282,7 +286,7 @@ const HANDLED = new Set([
   "data-afilter", "data-mpage", "data-rollback", "data-node", "data-event", "data-goto",
   "data-difficulty", "data-close", "data-tip", "data-decision",
   "data-review-config", "data-review-open", "data-review-continue",
-  "data-wb-run", "data-wb-rewrite", "data-wb-fix", "data-wb-case",
+  "data-wb-run", "data-wb-check-rewrite", "data-wb-deploy-rewrite", "data-wb-fix", "data-wb-case",
   "data-wb-consult", "data-wb-read",
   "id-newgame", "id-sandbox", "id-restart", "id-menu",
   "data-menu-view", "data-menu-diff", "data-menu-review", "data-menu-start",

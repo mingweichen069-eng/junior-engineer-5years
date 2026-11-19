@@ -7,7 +7,11 @@ from core.rules import debt as debt_rules
 
 
 def skill_level(state: GameState) -> float:
-    """技术能力：科技树与动手动作养出来的熟练度，折算成 0~1。"""
+    """工程经验折算成 0~1：只用于绩效里的「职业评价」一项。
+
+    它不是科技树等级，也不解锁任何东西。同一份经验还被工作台用来降低
+    调查消耗与变更事故风险（workbench._experience_factor）。
+    """
     skills = state.player.skills or {}
     avg = sum(float(v) for v in skills.values()) / max(1, len(skills))
     return max(0.0, min(1.0, avg / 70.0))
@@ -18,7 +22,7 @@ def performance_score(state: GameState, availability: float) -> float:
     trust = state.org.manager_trust / 100.0
     debt = 1.0 - debt_rules.pressure(state)
     skill = skill_level(state)
-    # 技术能力直接进绩效：只会写文档不会解决问题的人拿不到 S
+    # 工程经验只占 10% 权重进绩效：只会写文档、没真解决过问题的人拿不到 S
     return round(100.0 * (0.45 * avail + 0.25 * trust + 0.20 * debt + 0.10 * skill), 1)
 
 

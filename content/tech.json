@@ -216,9 +216,6 @@
    "desc": "读懂 EXPLAIN，知道索引什么时候有效、什么时候失效。",
    "ap": 6,
    "effects": {
-    "skill": {
-     "db": 5
-    },
     "mods": {
      "query_time": 0.98
     }
@@ -243,9 +240,6 @@
     "db_t1"
    ],
    "effects": {
-    "skill": {
-     "sql": 10
-    },
     "mods": {
      "query_time": 0.96
     }
@@ -391,9 +385,6 @@
    "desc": "缓存不是加速，是复制数据；复制就会有不一致。",
    "ap": 6,
    "effects": {
-    "skill": {
-     "backend": 5
-    }
    },
    "knowledge": [
     "k_be_cache_aside",
@@ -415,9 +406,6 @@
     "be_t1"
    ],
    "effects": {
-    "skill": {
-     "backend": 6
-    }
    },
    "knowledge": [
     "k_be_consistency"
@@ -539,9 +527,6 @@
    "desc": "先有监控，才有之后的每一次正确决策。",
    "ap": 6,
    "effects": {
-    "skill": {
-     "ops": 5
-    }
    },
    "knowledge": [
     "k_sre_slo"
@@ -562,9 +547,6 @@
     "sre_t1"
    ],
    "effects": {
-    "skill": {
-     "ops": 6
-    }
    },
    "knowledge": [
     "k_sre_capacity"
@@ -608,9 +590,6 @@
     "sre_t1"
    ],
    "effects": {
-    "skill": {
-     "ops": 4
-    },
     "docs": 1
    },
    "knowledge": [
@@ -900,12 +879,6 @@
    ],
    "effects": {
     "ap_bonus": 4,
-    "skill": {
-     "sql": 4,
-     "db": 4,
-     "backend": 4,
-     "ops": 4
-    },
     "mods": {
      "query_time": 0.96,
      "api_overhead": 0.97,

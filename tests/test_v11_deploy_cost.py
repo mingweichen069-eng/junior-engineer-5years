@@ -219,7 +219,8 @@ def test_api_all_three_deploys_charge(client):
     r1 = client.post("/api/workbench/deploy-index", json={"sql": GOOD_INDEX}).get_json()
     assert r1["ok"] and r1["cost"]["ap"] == ar.deploy_cost("index")["ap"]
 
-    r2 = client.post("/api/workbench/deploy-rewrite", json={"query": "q_dashboard"}).get_json()
+    r2 = client.post("/api/workbench/deploy-rewrite", json={
+        "query": "q_dashboard", "sql": workbench.REFERENCE_REWRITES["q_dashboard"]}).get_json()
     assert r2["ok"] and r2["cost"]["ap"] == ar.deploy_cost("rewrite")["ap"]
 
     code = exam_engine.load()["tasks"]["ex_fn_idempo"]["solution"]
@@ -239,7 +240,7 @@ def test_reset_lab_keeps_company_assets(tmp_path, monkeypatch):
     monkeypatch.setattr(workbench, "LAB_DB", tmp_path / "lab.db")
     st = new_game(seed=109)
     workbench.deploy_index(st, GOOD_INDEX)
-    workbench.deploy_rewrite(st, "q_dashboard")
+    workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])
     before_indexes = [tuple(i.columns) for i in st.assets.indexes]
     before_rewrites = list(st.assets.rewritten_queries)
 

@@ -47,7 +47,8 @@ def s_scale(st, week: int) -> None:
 def deploy(st, node_id: str) -> None:
     """模拟一个真的会动手的玩家：在工作台把技术部署成公司资产。"""
     if node_id == "db_t2":
-        workbench_rules.deploy_rewrite(st, "q_dashboard")
+        workbench_rules.deploy_rewrite(st, "q_dashboard",
+                                       workbench_rules.REFERENCE_REWRITES["q_dashboard"])
         workbench_rules.deploy_index(st, "CREATE INDEX ix_bal_created ON orders(created_at)")
     else:
         workbench_rules.deploy_index(st, "CREATE INDEX ix_bal_user ON orders(user_id, created_at)")

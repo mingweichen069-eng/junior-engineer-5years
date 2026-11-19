@@ -33,7 +33,8 @@ def deploy(st, node_id: str, max_ticks: int = 40):
     from core.rules import workbench
 
     if node_id == "db_t2":
-        workbench.deploy_rewrite(st, "q_dashboard")
+        # 阶段三起改写必须提交玩家 SQL：夹具模拟一个真的写了区间条件的玩家
+        workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])
         workbench.deploy_index(st, "CREATE INDEX ix_t2 ON orders(created_at)")
     elif node_id in ("db_replica", "db_read_replica"):
         st.assets.facilities["replica"] = st.assets.facilities.get("replica", 0) + 1

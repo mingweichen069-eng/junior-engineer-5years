@@ -216,6 +216,9 @@ def snapshot(st) -> dict:  # noqa: ANN001
             ],
             "facilities": dict(st.assets.facilities),
             "rewritten_queries": list(st.assets.rewritten_queries),
+            # 真实部署的改写 SQL 与「执行计划是否真的用上索引」：前端只展示，不提供参考答案
+            "rewrite_sql": dict(getattr(st.assets, "rewrite_sql", {}) or {}),
+            "rewrite_verified": dict(getattr(st.assets, "rewrite_verified", {}) or {}),
             "fixes": list(st.assets.fixes),
             "docs": st.assets.docs,
         },
@@ -226,6 +229,7 @@ def snapshot(st) -> dict:  # noqa: ANN001
         },
         "major_events": event_rules.major_for_client(st),
         "slow_queries": workbench_rules.slow_queries(st),
+        "rewrite_queries": workbench_rules.rewrite_queries(st),
         "cases": workbench_rules.cases_for(st),
         # 工作台成本 / 风险：让 UI 在玩家动手前就把代价摊开
         "deploy_costs": {k: action_rules.deploy_cost(k)
@@ -417,12 +421,25 @@ def create_app() -> Flask:
         return _wb_deploy("index", "部署索引",
                           lambda st: workbench_rules.deploy_index(st, sql))
 
+    @app.post("/api/workbench/check-rewrite")
+    def api_wb_check_rewrite():  # noqa: ANN202
+        """只做「原始 vs 改写」对比验证，不部署、不扣 AP；花一点调查精力并记实验。"""
+        payload = request.get_json(silent=True) or {}
+        st = load_or_new()
+        result = workbench_rules.check_rewrite_for_client(
+            st, str(payload.get("query", "")), str(payload.get("sql", "")))
+        saves.save_game(CURRENT_SLOT, st, "自动存档")
+        return jsonify({"ok": result.get("ok", False),
+                        "message": result.get("message", ""),
+                        "detail": result, "data": snapshot(st)})
+
     @app.post("/api/workbench/deploy-rewrite")
     def api_wb_deploy_rewrite():  # noqa: ANN202
         payload = request.get_json(silent=True) or {}
         query = str(payload.get("query", ""))
+        sql = str(payload.get("sql", ""))
         return _wb_deploy("rewrite", "改写查询",
-                          lambda st: workbench_rules.deploy_rewrite(st, query))
+                          lambda st: workbench_rules.deploy_rewrite(st, query, sql))
 
     @app.post("/api/workbench/deploy-fix")
     def api_wb_deploy_fix():  # noqa: ANN202

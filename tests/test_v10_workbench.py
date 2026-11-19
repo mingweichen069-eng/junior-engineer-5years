@@ -67,7 +67,7 @@ def test_non_sargable_predicate_needs_rewrite():
     st = new_game(seed=5)
     r = workbench.deploy_index(st, "CREATE INDEX ix_created ON orders(created_at)")
     assert "q_dashboard" not in r["effective_for"]      # DATE() 包住列，建了也白建
-    assert workbench.deploy_rewrite(st, "q_dashboard")["ok"]
+    assert workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])["ok"]
     assert "q_dashboard" in st.assets.indexes[0].effective_for  # 改写后物理生效
 
 
@@ -122,7 +122,7 @@ def test_major_event_persists_until_really_resolved():
     assert any(a["id"] == "M01_dashboard_degrade" for a in st.events.active_major)
     a = next(x for x in st.events.active_major if x["id"] == "M01_dashboard_degrade")
     assert a["weeks"] >= 1                              # 每周都在恶化
-    assert workbench.deploy_rewrite(st, "q_dashboard")["ok"]
+    assert workbench.deploy_rewrite(st, "q_dashboard", workbench.REFERENCE_REWRITES["q_dashboard"])["ok"]
     step(st)
     assert not any(x["id"] == "M01_dashboard_degrade" for x in st.events.active_major)
     assert any(r["id"] == "M01_dashboard_degrade" for r in st.career_rec.resolved_events)

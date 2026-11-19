@@ -17,13 +17,24 @@ v1.1 阶段二：公开用例与隐藏回归用例分离。前端只能拿 publi
 后端 validate_regression() 同时跑 public_cases + hidden_cases，隐藏用例的
 输入 / 期望值 / 异常文本都不进返回明细。执行环境补上墙钟超时、内存峰值、
 递归深度与超大常量限制。这是生产回归，不是考试：跑通就部署，跑不通继续查。
+
+v1.1.1：玩家代码不再在主进程 exec。主进程只做 AST 结构 / 能力预检，真正的
+加载与调用放进独立子进程（core/rules/exam_worker.py），由父进程墙钟超时兜底；
+POSIX 用 RLIMIT_AS / RLIMIT_CPU，Windows 尝试 Job Object 内存上限。这降低了
+「恶意代码卡死 Flask」的风险，但仍不是经过审计的 Python 安全沙箱（同用户、
+无文件系统隔离），边界见函数注释。
 """
 
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
 import json
+import logging
+import os
 import re
+import subprocess
 import sys
 import time
 import tracemalloc
@@ -141,6 +152,28 @@ MEM_LIMIT_BYTES = 24 * 1024 * 1024
 RECURSION_LIMIT = 160
 MAX_INT_CONST = 1_000_000
 TRACE_CHECK_EVERY = 256
+
+# v1.1.1：玩家代码不再在主进程里执行。
+# 主进程只做 AST 预检 + 起一个独立 Python 子进程；子进程负责真正的 exec / 调用，
+# 由主进程用墙钟超时兜底，超时就终止子进程。这样即使子进程里出现 C 层死循环、
+# 超大分配或直接崩溃，Flask 主服务也不会被拖住。
+WORKER_MODULE = "core.rules.exam_worker"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+EXEC_TIMEOUT_GRACE_SEC = 2.0
+PROC_MEM_LIMIT_BYTES = 256 * 1024 * 1024   # 子进程地址空间上限（POSIX rlimit / Windows Job Object）
+_WIN_JOB_MEMORY = 0x00000100
+_WIN_JOB_JOB_MEMORY = 0x00000200
+_WIN_JOB_KILL_ON_CLOSE = 0x00002000
+
+# 供诊断 / 测试读取：说明当前平台实际启用了哪些限制，避免把「尽力而为」说成完整沙箱。
+SANDBOX_INFO: dict = {
+    "mode": "subprocess",
+    "worker": WORKER_MODULE,
+    "platform": os.name,
+    "os_memory_limit": os.name != "nt",   # POSIX 用 RLIMIT_AS；Windows 用 Job Object，附加失败则为 False
+    "os_cpu_limit": os.name != "nt",      # POSIX 用 RLIMIT_CPU；Windows 只有墙钟超时
+    "timeout_sec": EXEC_TIMEOUT_GRACE_SEC,
+}
 
 
 def human(pat: str) -> str:
@@ -279,14 +312,14 @@ def _safe_repr(v, limit: int = 90) -> str:
 def _step_tracer(frame, event, arg):
     if event == "line":
         _step_tracer.count += 1
-        if _step_tracer.count > STEP_LIMIT:
+        if _step_tracer.count > _step_tracer.steps:
             raise _StepLimit()
         if _step_tracer.count % TRACE_CHECK_EVERY == 0:
-            if time.monotonic() - _step_tracer.start > WALL_LIMIT_SEC:
+            if time.monotonic() - _step_tracer.start > _step_tracer.wall:
                 raise _WallLimit()
             if _step_tracer.tracing:
                 peak = tracemalloc.get_traced_memory()[1]
-                if peak > MEM_LIMIT_BYTES:
+                if peak > _step_tracer.mem:
                     raise _MemoryLimit()
     return _step_tracer
 
@@ -294,30 +327,172 @@ def _step_tracer(frame, event, arg):
 _step_tracer.count = 0
 _step_tracer.start = 0.0
 _step_tracer.tracing = False
+_step_tracer.steps = STEP_LIMIT
+_step_tracer.wall = WALL_LIMIT_SEC
+_step_tracer.mem = MEM_LIMIT_BYTES
 
 
-def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[bool, str, dict]:
-    """生产回归：真的执行玩家写的函数，公开 + 隐藏用例逐个比对。
+# ---------------- 代码结构预检查（v1.1.1 P0） ----------------
 
-    安全边界（进程内轻量沙箱，不联网 / 不读文件，不引入额外框架）：
-    - AST 白名单：禁 import / global / 双下划线 / 超大整数常量；
-    - 受限 builtins（没有 open / eval / exec / __import__）；
-    - 执行步数上限 + 墙钟超时（防死循环）；
-    - tracemalloc 峰值 + 受限递归深度（防内存 / 栈爆掉）。
+class _StructureError(Exception):
+    def __init__(self, message: str, lineno: int = 1) -> None:
+        super().__init__(message)
+        self.message = message
+        self.lineno = lineno
 
-    hide_hidden=True 时，隐藏用例的输入、期望值、实际值和异常文本都不进
-    返回明细，只给「第几例没过」和统计 —— API 因此不会把隐藏用例送回前端。
+
+def _fail(node, message: str) -> None:
+    raise _StructureError(message, getattr(node, "lineno", 1))
+
+
+def _is_docstring(stmt) -> bool:
+    return (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Constant)
+        and isinstance(stmt.value.value, str)
+    )
+
+
+def _literal_ok(node) -> bool:
+    """只允许纯字面量结构：不会触发调用、属性访问、名字查找或大块运算。"""
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return all(_literal_ok(x) for x in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(k is None or _literal_ok(k) for k in node.keys) and all(
+            _literal_ok(v) for v in node.values
+        )
+    if isinstance(node, ast.UnaryOp):
+        return isinstance(node.op, (ast.UAdd, ast.USub, ast.Invert, ast.Not)) and _literal_ok(
+            node.operand
+        )
+    return False
+
+
+def _annotation_ok(node) -> bool:
+    # Python 3.14 的注解是惰性求值，但这里仍然只放行最简单形式，避免未来语义变化。
+    if isinstance(node, (ast.Name, ast.Constant)):
+        return True
+    if isinstance(node, ast.Subscript):
+        return _annotation_ok(node.value) and _annotation_ok(node.slice)
+    if isinstance(node, ast.Tuple):
+        return all(_annotation_ok(x) for x in node.elts)
+    return False
+
+
+def _check_function(node) -> None:
+    if node.decorator_list:
+        _fail(node, "不允许使用装饰器：装饰器会在加载阶段执行任意代码")
+    defaults = list(node.args.defaults) + [d for d in node.args.kw_defaults if d is not None]
+    for default in defaults:
+        if not _literal_ok(default):
+            _fail(default, "函数默认参数只能是字面量，不能是函数调用或变量")
+    args = (
+        list(node.args.posonlyargs)
+        + list(node.args.args)
+        + list(node.args.kwonlyargs)
+        + [a for a in (node.args.vararg, node.args.kwarg) if a is not None]
+    )
+    for arg in args:
+        if arg.annotation is not None and not _annotation_ok(arg.annotation):
+            _fail(arg.annotation, "类型注解只能是简单名字或字面量")
+    if node.returns is not None and not _annotation_ok(node.returns):
+        _fail(node.returns, "返回类型注解只能是简单名字或字面量")
+
+
+def _assignment_ok(node) -> bool:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    if any(not isinstance(t, ast.Name) for t in targets):
+        return False
+    if isinstance(node, ast.AnnAssign) and node.annotation is not None:
+        # 模块层上的注解在部分 Python 版本里是加载期求值的，必须一起检查。
+        if not _annotation_ok(node.annotation):
+            return False
+    value = getattr(node, "value", None)
+    return value is None or _literal_ok(value)
+
+
+def validate_code_structure(code: str) -> tuple[bool, str]:
+    """模块结构白名单：顶层只能有文档字符串、函数定义和安全字面量赋值。
+
+    目的不是「过滤关键字」，而是保证 ``exec`` 阶段除了定义函数之外什么都不做：
+    没有顶层循环 / 调用 / 分支 / 异常处理 / 上下文管理器，也就没有「限制尚未生效
+    就已执行」的窗口。函数体不在这一步限制，它只会在受控的调用阶段执行。
+
+    当前 24 道编码题全部是单函数实现，因此不开放 class 定义：类体在加载阶段
+    就会执行，且类的构建依赖 ``__build_class__``（不在受限 builtins 里）。
     """
-    text = str(answer or "")
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as ex:
+        return False, f"语法错误：第 {ex.lineno} 行 {ex.msg}"
+
+    blocked = [
+        (ast.While, "模块顶层不允许 while 循环；请把循环写进函数里"),
+        (ast.For, "模块顶层不允许 for 循环；请把循环写进函数里"),
+        (ast.AsyncFor, "模块顶层不允许 async for 循环；请把循环写进函数里"),
+        (ast.If, "模块顶层不允许 if 分支；请把逻辑写进函数里"),
+        (ast.Try, "模块顶层不允许 try/except；请把异常处理写进函数里"),
+        (ast.With, "模块顶层不允许 with 语句；请把上下文管理写进函数里"),
+        (ast.AsyncWith, "模块顶层不允许 async with 语句"),
+        (ast.Raise, "模块顶层不允许 raise"),
+        (ast.Assert, "模块顶层不允许 assert"),
+        (ast.Delete, "模块顶层不允许 del"),
+        (ast.Import, "模块顶层不允许 import；回归环境不提供任何模块"),
+        (ast.ImportFrom, "模块顶层不允许 import；回归环境不提供任何模块"),
+        (ast.Global, "模块顶层不允许 global"),
+        (ast.Nonlocal, "模块顶层不允许 nonlocal"),
+        (ast.AsyncFunctionDef, "模块顶层不允许 async 函数"),
+        (ast.ClassDef, "回归环境只支持函数定义，不支持 class"),
+    ]
+    if hasattr(ast, "Match"):
+        blocked.append((ast.Match, "模块顶层不允许 match 分支"))
+
+    try:
+        for stmt in tree.body:
+            if _is_docstring(stmt):
+                continue
+            if isinstance(stmt, ast.FunctionDef):
+                _check_function(stmt)
+                continue
+            if isinstance(stmt, ast.Pass):
+                continue
+            if isinstance(stmt, (ast.Assign, ast.AnnAssign)) and _assignment_ok(stmt):
+                continue
+            for typ, message in blocked:
+                if isinstance(stmt, typ):
+                    _fail(stmt, message)
+            if isinstance(stmt, ast.Expr):
+                _fail(stmt, "模块顶层不允许直接执行表达式或调用函数；请只定义函数")
+            _fail(stmt, f"模块顶层不允许 {type(stmt).__name__}；请只定义函数")
+    except _StructureError as ex:
+        return False, f"第 {ex.lineno} 行：{ex.message}"
+    return True, ""
+
+
+# ---------------- 隔离执行：主进程只做检查，真正的 exec 在子进程 ----------------
+
+def _base_detail(task: dict | None) -> dict:
     pub = public_cases(task)
     hid = hidden_cases(task)
-    cases = pub + hid
-    n_pub = len(pub)
-    detail: dict = {
-        "kind": "code", "cases": [], "passed": 0, "total": len(cases),
-        "public": {"total": n_pub, "passed": 0},
+    return {
+        "kind": "code",
+        "cases": [],
+        "passed": 0,
+        "total": len(pub) + len(hid),
+        "public": {"total": len(pub), "passed": 0},
         "hidden": {"total": len(hid), "passed": 0},
     }
+
+
+def _validate_answer(task: dict, text: str) -> tuple[bool, str, dict]:
+    """主进程侧的纯检查：长度、关键字黑名单、AST 能力限制、模块结构。
+
+    这些检查不执行玩家代码，因此可以在起子进程之前快速失败。
+    子进程里还会再跑一遍（防御性重复），真正隔离的是子进程边界。
+    """
+    detail = _base_detail(task)
     if len(text) > 6000:
         return False, "答卷太长了（超过 6000 字符）", detail
     checks = task.get("checks") or {}
@@ -333,6 +508,13 @@ def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[b
     except SyntaxError as ex:
         detail["error"] = f"第 {ex.lineno} 行：{ex.msg}"
         return False, f"语法错误：第 {ex.lineno} 行 {ex.msg}", detail
+
+    # 先看模块结构：顶层只允许定义与字面量，这一步能给出最直观的报错。
+    ok, why = validate_code_structure(text)
+    if not ok:
+        detail["error"] = why
+        return False, why, detail
+
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)):
             return False, "回归里不允许 import / global，直接把函数写完就行", detail
@@ -340,42 +522,338 @@ def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[b
             return False, "不允许访问双下划线属性", detail
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             return False, "不允许访问双下划线名字", detail
+        # str.format 的格式串可以在 C 层做属性 / 下标访问，是绕过 Attribute 检查的经典通道。
+        # 只拦「格式串里出现 __」的用法，普通 "{}".format(x) 不受影响。
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "format":
+            fmt = node.func.value
+            if isinstance(fmt, ast.Constant) and isinstance(fmt.value, str) \
+                    and "__" in fmt.value:
+                return False, "不允许通过格式化字符串访问双下划线属性", detail
         if isinstance(node, ast.Constant) and isinstance(node.value, int) \
                 and not isinstance(node.value, bool) and abs(node.value) > MAX_INT_CONST:
             return False, "代码里出现了过大的常量（超出回归环境限制）", detail
-        # 10**9 这类幂运算会绕过上面的常量检查，却在 C 层一次性吃掉几个 G
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow) \
                 and isinstance(node.right, ast.Constant) \
                 and isinstance(node.right.value, (int, float)) \
                 and not isinstance(node.right.value, bool) and node.right.value > 8:
             return False, "代码里出现了过大的幂运算（超出回归环境限制）", detail
 
-    ns: dict = {"__builtins__": SAFE_BUILTINS, "__name__": "exam_answer"}
+    return True, "", detail
+
+
+def _worker_command() -> list[str]:
+    return [sys.executable or "python", "-m", WORKER_MODULE]
+
+
+def _worker_env() -> dict:
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    prev = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(PROJECT_ROOT) + (os.pathsep + prev if prev else "")
+    return env
+
+
+def _parse_worker_output(stdout: str) -> dict | None:
+    for line in reversed((stdout or "").splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and {"ok", "msg", "detail"} <= set(obj):
+            return obj
+    return None
+
+
+def _attach_memory_job(pid: int, limit_bytes: int):
+    """Windows：用 Job Object 给子进程加地址空间上限；失败则返回 None。
+
+    这不是跨平台能力：Linux/macOS 用 worker 内的 RLIMIT_AS。
+    附加失败时 SANDBOX_INFO["os_memory_limit"] 会是 False，调用方应如实记录。
+    """
+    if os.name != "nt":
+        return None
+    try:  # pragma: no cover - 仅在 Windows 上执行
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_ulonglong),
+                ("WriteOperationCount", ctypes.c_ulonglong),
+                ("OtherOperationCount", ctypes.c_ulonglong),
+                ("ReadTransferCount", ctypes.c_ulonglong),
+                ("WriteTransferCount", ctypes.c_ulonglong),
+                ("OtherTransferCount", ctypes.c_ulonglong),
+            ]
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+        kernel32.SetInformationJobObject.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD
+        ]
+        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = (
+            _WIN_JOB_MEMORY | _WIN_JOB_JOB_MEMORY | _WIN_JOB_KILL_ON_CLOSE
+        )
+        info.ProcessMemoryLimit = int(limit_bytes)
+        info.JobMemoryLimit = int(limit_bytes)
+        ok = kernel32.SetInformationJobObject(
+            job, 9, ctypes.byref(info), ctypes.sizeof(info)  # JobObjectExtendedLimitInformation
+        )
+        if not ok:
+            kernel32.CloseHandle(job)
+            return None
+        # PROCESS_SET_QUOTA | PROCESS_TERMINATE
+        handle = kernel32.OpenProcess(0x0100 | 0x0001, False, int(pid))
+        if not handle:
+            kernel32.CloseHandle(job)
+            return None
+        ok = kernel32.AssignProcessToJobObject(job, handle)
+        kernel32.CloseHandle(handle)
+        if not ok:
+            kernel32.CloseHandle(job)
+            return None
+        return job
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _close_job(job) -> None:
+    if not job:
+        return
+    try:  # pragma: no cover - Windows
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
+        kernel32.CloseHandle(job)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _task_payload(task: dict) -> dict:
+    """只把判题需要的最小字段送进子进程，不带 solution。"""
+    return {
+        "kind": task.get("kind"),
+        "entry": task.get("entry", ""),
+        "checks": task.get("checks") or {},
+        "public_cases": public_cases(task),
+        "hidden_cases": hidden_cases(task),
+        "cases": task.get("cases") or [],
+    }
+
+
+def _execute_isolated(task: dict, text: str, *, hide_hidden: bool = True):
+    """在独立 Python 子进程里跑公开 + 隐藏用例，主进程只等结果 / 超时杀进程。"""
+    payload = {
+        "task": _task_payload(task),
+        "answer": text,
+        "limits": {
+            "steps": STEP_LIMIT,
+            "wall": WALL_LIMIT_SEC,
+            "mem": MEM_LIMIT_BYTES,
+            "recursion": RECURSION_LIMIT,
+        },
+        "hide_hidden": bool(hide_hidden),
+    }
+    timeout = max(3.0, min(20.0, float(WALL_LIMIT_SEC) * 4 + EXEC_TIMEOUT_GRACE_SEC))
+    flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
     try:
-        exec(compile(tree, "<regression>", "exec"), ns)
+        proc = subprocess.Popen(
+            _worker_command(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(PROJECT_ROOT),
+            env=_worker_env(),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=flags,
+            start_new_session=(os.name != "nt"),
+        )
     except Exception as ex:  # noqa: BLE001
-        detail["error"] = str(ex)
-        return False, f"代码加载失败：{ex}", detail
+        detail = _base_detail(task)
+        detail["error"] = f"{type(ex).__name__}: {ex}"
+        return False, "回归执行环境启动失败（未执行玩家代码）", detail
+
+    job = _attach_memory_job(proc.pid, PROC_MEM_LIMIT_BYTES) if os.name == "nt" else None
+    SANDBOX_INFO["os_memory_limit"] = bool(job) if os.name == "nt" else True
+    SANDBOX_INFO["timeout_sec"] = timeout
+    try:
+        try:
+            out, err = proc.communicate(json.dumps(payload, ensure_ascii=False), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.communicate(timeout=2.0)
+            except Exception:  # noqa: BLE001
+                pass
+            detail = _base_detail(task)
+            detail["timeout"] = True
+            return False, "回归执行超时（可能有死循环或超大计算）；执行进程已被终止", detail
+    finally:
+        _close_job(job)
+
+    if proc.returncode != 0:
+        # 子进程崩溃 / 被系统杀掉：不把 stderr 回给前端（可能夹带玩家代码内容）
+        logging.getLogger(__name__).warning(
+            "exam worker exited %s: %s", proc.returncode, (err or "")[:400]
+        )
+        detail = _base_detail(task)
+        detail["worker_error"] = f"exit {proc.returncode}"
+        return False, "回归执行进程异常退出（已隔离，服务未受影响）", detail
+
+    parsed = _parse_worker_output(out)
+    if not parsed:
+        detail = _base_detail(task)
+        detail["worker_error"] = "invalid worker output"
+        return False, "回归执行返回异常（已隔离，服务未受影响）", detail
+
+    ok = bool(parsed.get("ok"))
+    msg = str(parsed.get("msg") or "回归未通过")
+    detail = parsed.get("detail") if isinstance(parsed.get("detail"), dict) else _base_detail(task)
+    return ok, msg, detail
+
+
+def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[bool, str, dict]:
+    """生产回归入口：结构预检 → 子进程执行 → 结果反序列化。
+
+    与 v1.1 的区别：
+    - 玩家代码的 ``exec`` 不再发生在 Flask 进程里；
+    - 主进程先做纯 AST 检查，非法结构直接拒绝（不会卡住任何进程）；
+    - 子进程有墙钟超时，超时 / 崩溃由主进程处理，服务继续响应；
+    - 公开用例与隐藏用例都在子进程里跑，隐藏用例明细仍然不回传。
+    """
+    text = str(answer or "")
+    ok, msg, detail = _validate_answer(task, text)
+    if not ok:
+        return False, msg, detail
+    return _execute_isolated(task, text, hide_hidden=hide_hidden)
+
+
+@contextlib.contextmanager
+def _silence():
+    """把玩家代码的 stdout/stderr 吞掉，避免污染 worker 的 JSON 输出协议。"""
+    buf = io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout = sys.stderr = buf
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+
+
+def run_code_regression(
+    task: dict,
+    answer: str,
+    limits: dict | None = None,
+    *,
+    hide_hidden: bool = True,
+) -> tuple[bool, str, dict]:
+    """真正执行玩家代码的函数：只在子进程（exam_worker）里调用。
+
+    监控从 ``exec`` 之前就开始：settrace / tracemalloc / 递归限制都先于加载阶段
+    生效，并在 finally 里恢复；进程本身由主进程超时兜底。
+    """
+    text = str(answer or "")
+    limits = limits or {}
+    ok, msg, detail = _validate_answer(task, text)
+    if not ok:
+        return False, msg, detail
+
+    tree = ast.parse(text)
     entry = task.get("entry", "")
-    fn = ns.get(entry)
-    if not callable(fn):
-        return False, f"没找到函数 {entry}（注意函数名与缩进）", detail
+    pub = public_cases(task)
+    hid = hidden_cases(task)
+    cases = pub + hid
+    n_pub = len(pub)
+    detail = _base_detail(task)
+    ns: dict = {"__builtins__": SAFE_BUILTINS, "__name__": "exam_answer"}
 
     old_trace = sys.gettrace()
     old_recursion = sys.getrecursionlimit()
     was_tracing = tracemalloc.is_tracing()
+    _step_tracer.steps = int(limits.get("steps", STEP_LIMIT))
+    _step_tracer.wall = float(limits.get("wall", WALL_LIMIT_SEC))
+    _step_tracer.mem = int(limits.get("mem", MEM_LIMIT_BYTES))
+    _step_tracer.tracing = True
     if not was_tracing:
         tracemalloc.start()
-    _step_tracer.tracing = True
     try:
-        sys.setrecursionlimit(RECURSION_LIMIT)
+        sys.setrecursionlimit(int(limits.get("recursion", RECURSION_LIMIT)))
+        # 加载阶段也必须在监控下：tracer 先装，再 exec。
+        _step_tracer.count = 0
+        _step_tracer.start = time.monotonic()
+        sys.settrace(_step_tracer)
+        try:
+            with _silence():
+                exec(compile(tree, "<regression>", "exec"), ns)
+        except (_StepLimit, _WallLimit, _MemoryLimit, RecursionError):
+            raise
+        except Exception as ex:  # noqa: BLE001
+            detail["error"] = str(ex)
+            return False, f"代码加载失败：{ex}", detail
+        finally:
+            sys.settrace(old_trace)
+
+        if time.monotonic() - _step_tracer.start > _step_tracer.wall:
+            raise _WallLimit()
+        if tracemalloc.get_traced_memory()[1] > _step_tracer.mem:
+            raise _MemoryLimit()
+
+        fn = ns.get(entry)
+        if not callable(fn):
+            return False, f"没找到函数 {entry}（注意函数名与缩进）", detail
+
         for i, case in enumerate(cases, 1):
             is_hidden = i > n_pub
             _step_tracer.count = 0
             _step_tracer.start = time.monotonic()
             sys.settrace(_step_tracer)
             try:
-                got = fn(*(case.get("args") or []), **(case.get("kwargs") or {}))
+                with _silence():
+                    got = fn(*(case.get("args") or []), **(case.get("kwargs") or {}))
                 raised = None
             except (_StepLimit, _WallLimit, _MemoryLimit, RecursionError):
                 raise
@@ -417,7 +895,7 @@ def _check_code(task: dict, answer: str, *, hide_hidden: bool = True) -> tuple[b
                     f"期望 {_safe_repr(expect)}，得到 {_safe_repr(got)}"
                 ), detail
         # 最后一个用例若是纯 C 长调用，line 事件里查不到超时，这里兜底一次
-        if time.monotonic() - _step_tracer.start > WALL_LIMIT_SEC:
+        if time.monotonic() - _step_tracer.start > _step_tracer.wall:
             return False, "回归执行超时（可能有死循环或超大计算）", detail
     except _StepLimit:
         return False, "代码跑了太多步，可能有死循环", detail

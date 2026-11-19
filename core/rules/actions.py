@@ -1,10 +1,14 @@
 """玩家动作：校验、扣资源、延迟生效。
 
 每个动作都必须**直接改变系统**：改结构、改容量、改配置、还债。
-"只为了解锁另一个动作"的动作（刷技能、刷准备标记）已经删掉——
-技能只能从科技树学，科技节点要读条 + 考核。
+"只为了解锁另一个动作"的动作（刷技能、刷准备标记）已经删掉。
 
-行动力：每周基数 24（见 difficulty），科技节点与事件都能加减。
+v1.1.2 阶段六：不再有「技能门槛」与「做某个动作涨技能」的旧成长逻辑。
+角色技能改称**工程经验**，不是等级、不 gate 任何操作；它只影响调查消耗、
+变更事故风险与职业评价，由真实动手（实验 / 部署 / 复盘事件）沉淀，
+见 core/rules/workbench.py 与 core/rules/career.py。
+
+行动力：每周基数 24（见 difficulty），事件能加减；不再有科技加成。
 """
 
 from __future__ import annotations
@@ -15,27 +19,6 @@ from pathlib import Path
 from core.model.state import CachePolicy, GameState, Index, PendingEffect
 
 CONTENT = Path(__file__).resolve().parents[2] / "content"
-
-# 技能成长：每次"相关动作"给对应技能加经验（设计文档：约 6~8 次行动达标）
-SKILL_GAIN = 3.5
-SKILL_GAIN_BY_ACTION = {
-    "add_index_user_created": {"db": SKILL_GAIN, "sql": 1.0},
-    "cache_dashboard": {"backend": SKILL_GAIN},
-    "rewrite_dashboard": {"sql": SKILL_GAIN * 1.5},
-    "add_server": {"ops": SKILL_GAIN},
-    "pool_60": {"db": SKILL_GAIN, "backend": 1.0},
-    "open_monitoring": {"ops": SKILL_GAIN},
-    "write_docs": {"backend": 1.0},
-    "study_sql": {"sql": 10.0},     # 设计文档：约 2~3 次专注研究就能改写大屏 SQL
-    "study_db": {"db": 8.0},
-    "study_ops": {"ops": 8.0},
-    "load_test": {"ops": 2.0},
-    "audit_cache": {"backend": 1.0},
-    "archive_orders": {"db": 1.0},
-    "rewrite_pending": {"sql": 2.0},
-    "consolidate_servers": {"ops": 1.0},
-    "add_read_replica": {"db": 1.0, "ops": 1.0},
-}
 
 
 def load_actions(path: Path | None = None) -> list[dict]:
@@ -80,11 +63,7 @@ def check(state: GameState, action: dict) -> tuple[bool, str]:
         return False, f"行动力不足（需要 {cost}，剩余 {state.player.ap}）"
     if not state.meta.sandbox and state.company.cash_cents < action.get("cash_cents", 0):
         return False, "现金不足"
-    for skill, need in (action.get("requires", {}) or {}).get("skill", {}).items():
-        have = state.player.skills.get(skill, 0.0)
-        if have < need:
-            return False, f"{skill} 技能不足（需要 {need}，当前 {have:.0f}）"
-    # V1.0：不再有任何「需要先学会某科技」的门槛。
+    # V1.0 起不再有任何「需要先学会某科技」的门槛；v1.1.2 起连技能门槛也删掉。
     # 玩家随时可以直接尝试；做错了由系统按物理结果算代价，而不是被挡在门外。
     return True, ""
 
@@ -104,9 +83,8 @@ def start(state: GameState, action_id: str, actions: list[dict] | None = None) -
         state.company.cash_cents -= action.get("cash_cents", 0)
     state.actions.applied[action_id] = True
     state.actions.counts[action_id] = state.actions.counts.get(action_id, 0) + 1
-    # 一周内做的动作越多，下周自学精力回复越少：救火和学习抢的是同一份心力
+    # 一周内做的动作越多，下周调查精力回复越少：救火和查问题抢的是同一份心力
     state.actions.actions_this_week += 1
-    _gain_skills(state, action_id)
 
     due = state.meta.week + int(action.get("weeks", 0))
     for effect in action["effects"]:
@@ -116,11 +94,6 @@ def start(state: GameState, action_id: str, actions: list[dict] | None = None) -
             state.actions.pending.append(PendingEffect(action_id=action_id, due_week=due, effect=effect))
     suffix = f"（预计 W{due} 生效）" if due > state.meta.week else ""
     return True, f"已开始：{action['name']}{suffix}"
-
-
-def _gain_skills(state: GameState, action_id: str) -> None:
-    for skill, amount in SKILL_GAIN_BY_ACTION.get(action_id, {}).items():
-        state.player.skills[skill] = min(100.0, state.player.skills.get(skill, 0.0) + amount)
 
 
 def apply_due(state: GameState) -> list[str]:

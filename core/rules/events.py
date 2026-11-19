@@ -156,6 +156,8 @@ def _apply_list(state: GameState, effects: list[dict], day: int, impact: Impact 
             state.flags[str(eff.get("flag", ""))] = True
             applied["flag"] = eff.get("flag", "")
         elif kind == "skill":
+            # v1.1.2：这不是「刷等级」，是经历一次真实事件 / 复盘后沉淀的工程经验。
+            # 它只影响调查消耗、变更事故风险与职业评价，不解锁任何东西、不发资格证。
             for name, amount in (eff.get("skills") or {}).items():
                 state.player.skills[name] = min(100.0, state.player.skills.get(name, 0.0) + float(amount))
             applied["skill"] = eff.get("skills", {})
